@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PostGrab - LinkedIn Post Extractor</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">PostGrab</span>
+          <span class="brand-tag">Visible Posts</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div id="connectionStatus" class="status-badge checking">
+          <span class="dot"></span>
+          <span class="status-text">Scanning...</span>
+        </div>
+        <button id="btnCloseSidebar" class="btn-dock" title="Close Sidebar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="visible">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        <span>Visible Posts</span>
+        <span id="visibleCountBadge" class="count-pill">0</span>
+      </button>
+      <button class="nav-tab" data-tab="saved">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+          <polyline points="7 3 7 8 15 8"></polyline>
+        </svg>
+        <span>Saved</span>
+        <span id="savedCountBadge" class="count-pill">0</span>
+      </button>
+      <button class="nav-tab" data-tab="export">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span>Export</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: VISIBLE POSTS ON SCREEN -->
+    <section id="tab-visible" class="tab-pane active">
+      <div class="pane-action-bar">
+        <div class="sync-status-group">
+          <span class="pane-subtitle" id="visibleHeader">Visible on screen (0)</span>
+          <label class="toggle-switch-label" title="Automatically update as you scroll">
+            <input type="checkbox" id="toggleAutoSync" checked>
+            <span class="toggle-pill">
+              <span class="live-dot"></span>
+              <span class="toggle-text">Auto-Sync ON</span>
+            </span>
+          </label>
+        </div>
+        <button id="btnRescan" class="btn-rescan" title="Rescan current viewport">
+          🔄 Refresh
+        </button>
+      </div>
+
+      <!-- Loading State -->
+      <div id="detectLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Scanning visible posts on your screen...</p>
+      </div>
+
+      <!-- Not on LinkedIn Warning -->
+      <div id="detectNotLinkedIn" class="empty-state hidden">
+        <div class="empty-icon">🌐</div>
+        <h3>Not on LinkedIn</h3>
+        <p>Open your LinkedIn feed in the active tab to scan visible posts.</p>
+        <a href="https://www.linkedin.com/feed/" target="_blank" class="btn btn-outline">
+          Open LinkedIn Feed
+        </a>
+      </div>
+
+      <!-- No Posts Detected Warning -->
+      <div id="detectNoPosts" class="empty-state hidden">
+        <div class="empty-icon">🔍</div>
+        <h3>No Visible Posts Found</h3>
+        <p>Scroll down slightly on your LinkedIn feed, then click "Refresh".</p>
+        <button id="btnRetryScan" class="btn btn-outline">
+          🔄 Refresh Scan
+        </button>
+      </div>
+
+      <!-- Visible Posts List Container -->
+      <div id="visiblePostsList" class="posts-list hidden">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- TAB 2: SAVED POSTS DATABASE -->
+    <section id="tab-saved" class="tab-pane">
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="savedSearch" placeholder="Search saved posts or authors..." />
+      </div>
+
+      <!-- Saved Posts List -->
+      <div id="savedPostsList" class="posts-list">
+        <!-- Injected via JS -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="savedEmptyState" class="empty-state hidden">
+        <div class="empty-icon">📂</div>
+        <h3>No Saved Posts Yet</h3>
+        <p>Switch to the "Visible Posts" tab to save text from any post on your screen.</p>
+      </div>
+    </section>
+
+    <!-- TAB 3: EXPORT & TOOLS -->
+    <section id="tab-export" class="tab-pane">
+      <div class="stat-card full-width">
+        <span class="stat-value" id="statSavedTotal">0</span>
+        <span class="stat-label">Total Saved Posts</span>
+      </div>
+
+      <div class="export-actions-list">
+        <div class="export-item">
+          <div class="export-item-info">
+            <h4>Export to CSV</h4>
+            <p>Save all extracted post contents into a spreadsheet file (Excel/Sheets).</p>
+          </div>
+          <button id="btnExportCSV" class="btn btn-outline">
+            Export CSV
+          </button>
+        </div>
+
+        <div class="export-item">
+          <div class="export-item-info">
+            <h4>Export to Plain Text (.txt)</h4>
+            <p>Export all post contents into a single readable text document.</p>
+          </div>
+          <button id="btnExportTXT" class="btn btn-outline">
+            Export TXT
+          </button>
+        </div>
+
+        <div class="export-item">
+          <div class="export-item-info">
+            <h4>Export JSON Backup</h4>
+            <p>Export full JSON data containing authors, emails, and post contents.</p>
+          </div>
+          <button id="btnExportJSON" class="btn btn-outline">
+            Export JSON
+          </button>
+        </div>
+
+        <div class="export-item danger-item">
+          <div class="export-item-info">
+            <h4 class="text-danger">Clear All Saved Posts</h4>
+            <p>Delete all saved posts from your local browser storage.</p>
+          </div>
+          <button id="btnClearAll" class="btn btn-danger-outline">
+            Clear All
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

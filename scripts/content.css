@@ -1,0 +1,61 @@
+/* PostGrab In-Page Sidebar Styles */
+#postgrab-sidebar-container {
+  all: initial;
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  width: 440px !important;
+  height: 100vh !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transform: translateX(100%) !important;
+}
+
+#postgrab-sidebar-container.open {
+  pointer-events: auto !important;
+  transform: translateX(0) !important;
+}
+
+#postgrab-sidebar-iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5) !important;
+  background-color: #0a0e17 !important;
+  color-scheme: dark !important;
+}
+
+/* Floating quick toggle tab pinned to right edge */
+#postgrab-floating-toggle {
+  all: initial;
+  position: fixed !important;
+  right: 0 !important;
+  top: 45% !important;
+  transform: translateY(-50%) !important;
+  z-index: 2147483646 !important;
+  background: linear-gradient(135deg, #0284c7, #06b6d4) !important;
+  color: #ffffff !important;
+  padding: 8px 10px 8px 12px !important;
+  border-radius: 20px 0 0 20px !important;
+  cursor: pointer !important;
+  box-shadow: -2px 4px 14px rgba(6, 182, 212, 0.4) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  user-select: none !important;
+  transition: all 0.2s ease !important;
+}
+
+#postgrab-floating-toggle:hover {
+  padding-left: 16px !important;
+  background: linear-gradient(135deg, #0369a1, #0891b2) !important;
+  box-shadow: -4px 6px 18px rgba(6, 182, 212, 0.6) !important;
+}
+
+#postgrab-floating-toggle.hidden {
+  display: none !important;
+}
