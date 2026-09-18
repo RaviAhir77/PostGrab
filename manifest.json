@@ -47,6 +47,10 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://*.linkedin.com/*"
+    "https://*.linkedin.com/*",
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*",
+    "http://*/*",
+    "https://*/*"
   ]
 }

@@ -46,7 +46,7 @@
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
           <circle cx="12" cy="12" r="3"></circle>
         </svg>
-        <span>Visible Posts</span>
+        <span>Visible</span>
         <span id="visibleCountBadge" class="count-pill">0</span>
       </button>
       <button class="nav-tab" data-tab="saved">
@@ -177,6 +177,17 @@
           <button id="btnExportJSON" class="btn btn-outline">
             Export JSON
           </button>
+        </div>
+
+        <div class="export-item">
+          <div class="export-item-info" style="width: 100%;">
+            <h4>🤖 AI Draft Server URL</h4>
+            <p>Connects to your local or live Node.js auto-drafting server.</p>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <input type="text" id="serverUrlInput" value="http://localhost:3000" placeholder="http://localhost:3000" style="flex: 1; padding: 5px 8px; font-size: 11px; background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: #fff;" />
+              <button id="btnSaveServerUrl" class="btn btn-outline" style="padding: 4px 10px; font-size: 11px;">Save</button>
+            </div>
+          </div>
         </div>
 
         <div class="export-item danger-item">

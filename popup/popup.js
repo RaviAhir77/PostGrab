@@ -3,10 +3,14 @@
  */
 
 const STORAGE_KEY = 'postgrab_saved_posts';
+const DRAFTED_KEY = 'postgrab_drafted_posts';
+const SERVER_URL_KEY = 'postgrab_server_url';
 
 // State
 let visiblePosts = [];
 let savedPosts = [];
+let draftedPostIds = new Set();
+let serverUrl = 'http://localhost:3000';
 let searchQuery = '';
 let isAutoSyncEnabled = true;
 
@@ -39,12 +43,15 @@ const btnExportCSV = document.getElementById('btnExportCSV');
 const btnExportTXT = document.getElementById('btnExportTXT');
 const btnExportJSON = document.getElementById('btnExportJSON');
 const btnClearAll = document.getElementById('btnClearAll');
+const serverUrlInput = document.getElementById('serverUrlInput');
+const btnSaveServerUrl = document.getElementById('btnSaveServerUrl');
 const toastEl = document.getElementById('toast');
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
   setupEventListeners();
+  await loadSettings();
   await loadSavedPosts();
   await scanVisiblePosts();
 
@@ -156,31 +163,38 @@ function renderVisiblePosts() {
 
   visiblePosts.forEach((post, index) => {
     const isAlreadySaved = savedPosts.some(s => s.id === post.id);
+    const isDrafted = draftedPostIds.has(post.id);
 
     const card = document.createElement('div');
     card.className = 'post-card';
 
     card.innerHTML = `
       <div class="post-card-header">
-        <div class="author-info">
-          ${post.authorUrl 
-            ? `<a class="author-name" href="${escapeHtml(post.authorUrl)}" target="_blank">👤 ${escapeHtml(post.author)}</a>` 
-            : `<span class="author-name">👤 ${escapeHtml(post.author)}</span>`}
+        <div class="header-left">
+          <div class="author-row">
+            ${post.authorUrl 
+              ? `<a class="author-name" href="${escapeHtml(post.authorUrl)}" target="_blank">👤 ${escapeHtml(post.author)}</a>` 
+              : `<span class="author-name">👤 ${escapeHtml(post.author)}</span>`}
+            ${post.jobLink ? `<a href="${escapeHtml(post.jobLink)}" target="_blank" class="badge-job" style="text-decoration:none;">💼 Job Link</a>` : ''}
+          </div>
+          ${post.email ? `<div class="author-subrow"><span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span></div>` : ''}
         </div>
-        <div>
-          ${post.email ? `<span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span>` : ''}
-          ${post.jobLink ? `<span class="badge-job">💼 Job Link</span>` : ''}
+        <div class="card-actions-right">
+          <button class="btn-draft-email ${isDrafted ? 'drafted' : ''}" data-id="${post.id}" title="${isDrafted ? 'Email already saved to Gmail Drafts' : 'Generate AI cold email and save to Gmail Drafts'}">
+            ${isDrafted ? '✓ In Drafts' : '✨ Draft'}
+          </button>
+          <button class="btn-save-post ${isAlreadySaved ? 'saved' : ''}" data-id="${post.id}">
+            ${isAlreadySaved ? '✓ Saved' : '+ Save'}
+          </button>
         </div>
       </div>
 
-      <!-- Pure Text Content Box (No Images) -->
+      <!-- Slim Text Content Box -->
       <div class="post-text-content">${escapeHtml(post.content)}</div>
 
-      <div class="post-card-footer">
-        <span class="post-meta">Post #${index + 1} • ${post.content.length} chars</span>
-        <button class="btn-save-post ${isAlreadySaved ? 'saved' : ''}" data-id="${post.id}">
-          ${isAlreadySaved ? '✓ Saved' : '+ Save Post'}
-        </button>
+      <!-- Bottom Meta -->
+      <div class="post-card-bottom">
+        <span class="post-char-count">${post.content.length} chars</span>
       </div>
     `;
 
@@ -195,30 +209,132 @@ function renderVisiblePosts() {
       }
     });
 
+    // Button Draft Listener
+    const draftBtn = card.querySelector('.btn-draft-email');
+    draftBtn.addEventListener('click', () => {
+      handleDraftEmail(post, draftBtn);
+    });
+
     visiblePostsList.appendChild(card);
   });
+}
+
+// --- Extension Context Safety Guard ---
+function hasValidExtensionContext() {
+  return typeof chrome !== 'undefined' && chrome.runtime && !!chrome.runtime.id;
+}
+
+// --- Settings & Drafted State Operations ---
+async function loadSettings() {
+  return new Promise((resolve) => {
+    if (!hasValidExtensionContext()) return resolve();
+    try {
+      chrome.storage.local.get([SERVER_URL_KEY, DRAFTED_KEY], (res) => {
+        if (chrome.runtime?.lastError) return resolve();
+        if (res && res[SERVER_URL_KEY]) {
+          serverUrl = res[SERVER_URL_KEY];
+          if (serverUrlInput) serverUrlInput.value = serverUrl;
+        }
+        if (res && Array.isArray(res[DRAFTED_KEY])) {
+          draftedPostIds = new Set(res[DRAFTED_KEY]);
+        }
+        resolve();
+      });
+    } catch (_) {
+      resolve();
+    }
+  });
+}
+
+// --- AI Cold Email Drafting Handler ---
+async function handleDraftEmail(post, btn) {
+  if (btn.classList.contains('loading')) return;
+
+  if (draftedPostIds.has(post.id)) {
+    const confirmRedraft = confirm(`An email draft was already generated for this post. Do you want to generate another draft in your Gmail account?`);
+    if (!confirmRedraft) return;
+  }
+
+  btn.classList.remove('error', 'drafted');
+  btn.classList.add('loading');
+  btn.textContent = '⏳ Drafting...';
+
+  try {
+    const cleanServerUrl = (serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
+    const endpoint = `${cleanServerUrl}/api/create-draft`;
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post })
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      draftedPostIds.add(post.id);
+      if (hasValidExtensionContext()) {
+        try {
+          await chrome.storage.local.set({ [DRAFTED_KEY]: Array.from(draftedPostIds) });
+        } catch (_) {}
+      }
+      btn.classList.remove('loading', 'error');
+      btn.classList.add('drafted');
+      btn.textContent = '✓ In Drafts';
+      btn.title = 'Email already saved to Gmail Drafts';
+      showToast(`Draft created: "${data.subject || 'Cold Email'}" saved to Gmail!`);
+    } else {
+      throw new Error(data.error || `Server returned status ${res.status}`);
+    }
+  } catch (err) {
+    console.error('Draft error:', err);
+    btn.classList.remove('loading');
+    btn.classList.add('error');
+    btn.textContent = '⚠️ Retry';
+    if (!hasValidExtensionContext()) {
+      showToast('Extension reloaded. Please refresh LinkedIn (F5).');
+    } else {
+      showToast(`Draft failed: ${err.message || 'Check server connection'}`);
+    }
+  }
 }
 
 // --- Storage Operations (chrome.storage.local) ---
 async function loadSavedPosts() {
   return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEY], (res) => {
-      savedPosts = Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : [];
-      updateBadges();
-      updateExportStats();
+    if (!hasValidExtensionContext()) return resolve(savedPosts);
+    try {
+      chrome.storage.local.get([STORAGE_KEY], (res) => {
+        if (chrome.runtime?.lastError) return resolve(savedPosts);
+        savedPosts = res && Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : [];
+        updateBadges();
+        updateExportStats();
+        resolve(savedPosts);
+      });
+    } catch (_) {
       resolve(savedPosts);
-    });
+    }
   });
 }
 
 async function savePostsToStorage(posts) {
   return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: posts }, () => {
-      savedPosts = posts;
-      updateBadges();
-      updateExportStats();
+    savedPosts = posts;
+    updateBadges();
+    updateExportStats();
+
+    if (!hasValidExtensionContext()) {
+      showToast('Extension reloaded. Please refresh LinkedIn page (F5).');
+      return resolve();
+    }
+
+    try {
+      chrome.storage.local.set({ [STORAGE_KEY]: posts }, () => {
+        resolve();
+      });
+    } catch (_) {
       resolve();
-    });
+    }
   });
 }
 
@@ -266,6 +382,7 @@ function renderSavedPosts() {
   savedPostsList.classList.remove('hidden');
 
   filtered.forEach(post => {
+    const isDrafted = draftedPostIds.has(post.id);
     const card = document.createElement('div');
     card.className = 'post-card';
 
@@ -275,32 +392,42 @@ function renderSavedPosts() {
 
     card.innerHTML = `
       <div class="post-card-header">
-        <div class="author-info">
-          ${post.authorUrl 
-            ? `<a class="author-name" href="${escapeHtml(post.authorUrl)}" target="_blank">👤 ${escapeHtml(post.author)}</a>` 
-            : `<span class="author-name">👤 ${escapeHtml(post.author)}</span>`}
+        <div class="header-left">
+          <div class="author-row">
+            ${post.authorUrl 
+              ? `<a class="author-name" href="${escapeHtml(post.authorUrl)}" target="_blank">👤 ${escapeHtml(post.author)}</a>` 
+              : `<span class="author-name">👤 ${escapeHtml(post.author)}</span>`}
+            ${post.jobLink ? `<a href="${escapeHtml(post.jobLink)}" target="_blank" class="badge-job" style="text-decoration:none;">💼 Job Link</a>` : ''}
+          </div>
+          ${post.email ? `<div class="author-subrow"><span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span></div>` : ''}
         </div>
-        <div>
-          ${post.email ? `<span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span>` : ''}
-          ${post.jobLink ? `<a href="${escapeHtml(post.jobLink)}" target="_blank" class="badge-job" style="text-decoration:none;">💼 View Job</a>` : ''}
-        </div>
-      </div>
-
-      <!-- Pure Text Content Box -->
-      <div class="post-text-content">${escapeHtml(post.content)}</div>
-
-      <div class="post-card-footer">
-        <span class="post-meta">⏱️ ${formattedDate}</span>
         <div class="card-actions-right">
+          <button class="btn-draft-email ${isDrafted ? 'drafted' : ''}" data-id="${post.id}" title="${isDrafted ? 'Email already saved to Gmail Drafts' : 'Generate AI cold email and save to Gmail Drafts'}">
+            ${isDrafted ? '✓ In Drafts' : '✨ Draft'}
+          </button>
           <button class="icon-btn btn-copy" title="Copy text content">
-            📋 Copy Text
+            📋 Copy
           </button>
           <button class="icon-btn danger btn-delete" title="Delete post">
-            🗑️ Delete
+            🗑️
           </button>
         </div>
       </div>
+
+      <!-- Slim Text Content Box -->
+      <div class="post-text-content">${escapeHtml(post.content)}</div>
+
+      <!-- Bottom Meta -->
+      <div class="post-card-bottom">
+        <span class="post-char-count">⏱️ ${formattedDate} • ${post.content.length} chars</span>
+      </div>
     `;
+
+    // Button Draft Listener
+    const draftBtn = card.querySelector('.btn-draft-email');
+    draftBtn.addEventListener('click', () => {
+      handleDraftEmail(post, draftBtn);
+    });
 
     // Copy Content Button
     const copyBtn = card.querySelector('.btn-copy');
@@ -486,6 +613,20 @@ function setupEventListeners() {
   btnExportTXT.addEventListener('click', handleExportTXT);
   btnExportJSON.addEventListener('click', handleExportJSON);
   btnClearAll.addEventListener('click', handleClearAll);
+
+  // AI Draft Server URL Save
+  if (btnSaveServerUrl) {
+    btnSaveServerUrl.addEventListener('click', async () => {
+      const val = (serverUrlInput ? serverUrlInput.value.trim() : '').replace(/\/+$/, '');
+      if (!val) {
+        showToast('Please enter a valid server URL');
+        return;
+      }
+      serverUrl = val;
+      await chrome.storage.local.set({ [SERVER_URL_KEY]: serverUrl });
+      showToast(`AI Server URL saved: ${serverUrl}`);
+    });
+  }
 
   // Close sidebar button
   const btnCloseSidebar = document.getElementById('btnCloseSidebar');

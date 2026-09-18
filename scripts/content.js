@@ -32,12 +32,29 @@
   `;
   document.documentElement.appendChild(floatingToggle);
 
+  const isValidContext = () => {
+    return typeof chrome !== 'undefined' && chrome.runtime && !!chrome.runtime.id;
+  };
+
+  const cleanupIfInvalid = () => {
+    if (!isValidContext()) {
+      window.removeEventListener('scroll', handleUserScroll, { capture: true });
+      document.removeEventListener('scroll', handleUserScroll, { capture: true });
+      window.removeEventListener('wheel', handleUserScroll);
+      window.removeEventListener('touchmove', handleUserScroll);
+      return true;
+    }
+    return false;
+  };
+
   // 3. Scan & Broadcast Posts
   const runScan = () => {
     if (!isAutoSyncActive) return;
+    if (cleanupIfInvalid()) return;
     if (!window.__postgrab_extractVisiblePosts) return;
 
     window.requestAnimationFrame(() => {
+      if (cleanupIfInvalid()) return;
       const result = window.__postgrab_extractVisiblePosts();
       if (!result || !result.success || !result.posts || result.posts.length === 0) return;
 
@@ -48,17 +65,23 @@
 
       // 1. Post to Iframe Sidebar
       if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({
-          action: 'livePostsUpdate',
-          posts: result.posts
-        }, '*');
+        try {
+          iframe.contentWindow.postMessage({
+            action: 'livePostsUpdate',
+            posts: result.posts
+          }, '*');
+        } catch (_) {}
       }
 
       // 2. Broadcast to Extension Popup (if open)
-      chrome.runtime.sendMessage({
-        action: 'livePostsUpdate',
-        posts: result.posts
-      }).catch(() => {}); // Catch if popup is closed
+      try {
+        if (isValidContext()) {
+          chrome.runtime.sendMessage({
+            action: 'livePostsUpdate',
+            posts: result.posts
+          }).catch(() => {}); // Catch if popup is closed
+        }
+      } catch (_) {}
     });
   };
 
@@ -83,6 +106,7 @@
   // 4. Capture ALL scroll and wheel events anywhere on the page (capture: true)
   const handleUserScroll = () => {
     if (!isAutoSyncActive) return;
+    if (cleanupIfInvalid()) return;
 
     if (!scrollThrottleTimer) {
       scrollThrottleTimer = setTimeout(() => {

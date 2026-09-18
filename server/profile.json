@@ -1,0 +1,62 @@
+{
+  "fullName": "Ravi Gagiya",
+  "title": "Full Stack Developer",
+  "location": "Rajkot, Gujarat, India",
+  "phone": "+91 7096206404",
+  "contactEmail": "ravigagiya.cse@gmail.com",
+  "senderEmail": "dairyagents@gmail.com",
+  "linkedinUrl": "https://linkedin.com/in/ravigagiya",
+  "githubUrl": "https://github.com/RaviAhir77",
+  "yearsOfExperience": "2+",
+  "education": "Bachelor of Engineering (B.E.) in Computer Engineering, Government Engineering College, Rajkot (2025)",
+  "currentRole": {
+    "company": "Thinkersky Technology (Shipzy ERP)",
+    "period": "Sep 2024 – Present",
+    "details": "Developing a large-scale Import & Export ERP with Node.js, JavaScript, MySQL (180+ relational tables), e-Invoice, e-Way Bill, and eBRC compliance. Delivered 8+ client variants and scaled product management from 50 to 800+ items."
+  },
+  "technicalSkills": {
+    "languages": ["JavaScript", "TypeScript", "SQL"],
+    "backend": ["Node.js", "Express.js", "REST APIs", "Socket.IO", "WebRTC", "Prisma ORM"],
+    "frontend": ["React.js", "React Native", "HTML5", "CSS3", "Bootstrap", "jQuery", "EJS"],
+    "databases": ["PostgreSQL", "MongoDB", "MySQL", "Cloudflare D1 (SQLite)"],
+    "cloudDevOps": ["Linux VPS", "Nginx", "PM2", "Docker", "Cloudflare Workers", "Cloudflare R2", "Railway", "MongoDB Atlas"],
+    "tools": ["Git", "GitHub", "Puppeteer", "TinyMCE", "LiveKit", "Stripe", "PayPal"]
+  },
+  "notableProjects": [
+    {
+      "name": "JAM – Live Streaming Platform",
+      "stack": "Node.js, Express.js, MongoDB, LiveKit, Docker, Linux VPS, PM2, Nginx, Stripe",
+      "impact": "Engineered backend APIs and real-time streaming infrastructure. Migrated from Agora to self-hosted LiveKit, reducing costs by 80% (from ~$500 to under $100/mo)."
+    },
+    {
+      "name": "Pragyaan ERP",
+      "stack": "React.js, Node.js, PostgreSQL, Prisma, TinyMCE, Puppeteer, Cloudflare R2, Linux VPS",
+      "impact": "Architected full-stack enterprise ERP for quotations, invoices, GST compliance, and automated PDF document generation."
+    },
+    {
+      "name": "Dairy Agent Mobile Application",
+      "stack": "React Native, TypeScript, Node.js, PostgreSQL, Prisma ORM, Linux VPS, Nginx",
+      "impact": "Full-stack mobile app for dairy distribution, route delivery tracking, shift-wise order management, and invoicing."
+    },
+    {
+      "name": "Pedhi ERP – Gujarat Market Yard Management",
+      "stack": "React.js, Node.js, PostgreSQL, Prisma, Puppeteer Queue System",
+      "impact": "High-volume agricultural market yard ERP with queue-based transaction processing and automated billing."
+    },
+    {
+      "name": "Random Chat – WebRTC Video & Voice",
+      "stack": "React.js, Node.js, WebRTC, Socket.IO, Express.js, Railway, MongoDB",
+      "impact": "Real-time communication platform with in-memory matchmaking and low-latency peer connections."
+    }
+  ],
+  "emailTone": "Direct, confident, professional, and concise. Demonstrates practical problem-solving with concrete full-stack experience.",
+  "guidelines": [
+    "Keep total email body under 150 words.",
+    "Do NOT start with 'I hope this email finds you well' or 'My name is...'.",
+    "Hook the hiring manager immediately by referencing the exact role or technical requirement in their post.",
+    "Intelligently highlight 1-2 matching real projects from Ravi's experience (e.g. ERP scaling, LiveKit WebRTC cost reduction, high-performance Node/React).",
+    "Mention that Ravi's resume is attached for quick review.",
+    "Close with a clear, low-friction invitation for a 10-minute introductory call.",
+    "Include phone (+91 7096206404), email, LinkedIn, and GitHub in signature."
+  ]
+}
