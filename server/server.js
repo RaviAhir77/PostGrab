@@ -104,11 +104,13 @@ app.post('/api/create-draft', async (req, res) => {
   }
 });
 
+const HOST = process.env.HOST || '0.0.0.0';
+
 // Start Server
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`-----------------------------------------------------`);
-  console.log(`🚀 PostGrab Auto-Draft Server running on http://localhost:${PORT}`);
-  console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
+  console.log(`🚀 PostGrab Auto-Draft Server running on http://${HOST}:${PORT}`);
+  console.log(`📡 Health Check: http://${HOST}:${PORT}/api/health`);
   console.log(`📝 Gmail User: ${process.env.GMAIL_USER || '[Not configured - see .env]'}`);
   console.log(`⚙️  Dry Run Mode: ${process.env.DRY_RUN === 'true' ? 'ENABLED (simulation mode)' : 'DISABLED (live IMAP)'}`);
   console.log(`-----------------------------------------------------`);

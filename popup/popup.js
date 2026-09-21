@@ -10,7 +10,7 @@ const SERVER_URL_KEY = 'postgrab_server_url';
 let visiblePosts = [];
 let savedPosts = [];
 let draftedPostIds = new Set();
-let serverUrl = 'http://localhost:3000';
+let serverUrl = 'http://103.138.96.132:7777';
 let searchQuery = '';
 let isAutoSyncEnabled = true;
 
