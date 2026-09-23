@@ -22,13 +22,13 @@ window.__postgrab_extractVisiblePosts = () => {
       return 'post_' + Math.abs(hash).toString(36);
     };
 
-    // 1. Find post text containers using LinkedIn's stable semantic attributes
+    // 1. Find post text containers using LinkedIn's feed and search attributes
     const targetBoxes = document.querySelectorAll(
-      '[data-testid="expandable-text-box"], [data-testid="update-text"], .feed-shared-update-v2__description'
+      '[data-testid="expandable-text-box"], [data-testid="update-text"], .feed-shared-update-v2__description, .feed-shared-inline-show-more-text, .update-components-text, .feed-shared-text-view, [data-test-id="main-feed-activity-card__commentary"]'
     );
 
     if (!targetBoxes || targetBoxes.length === 0) {
-      return { success: false, error: 'No feed posts found' };
+      return { success: true, posts: [], error: 'No post elements found' };
     }
 
     const posts = [];
@@ -41,9 +41,9 @@ window.__postgrab_extractVisiblePosts = () => {
       // Skip elements that are above the visible window
       if (rect.bottom < 40) continue;
 
-      // Break early if we've passed below the visible screen (avoids scanning 100+ offscreen posts)
+      // Break early if we've passed below the visible screen
       if (rect.top > windowHeight - 40) {
-        if (posts.length > 0) break; // Already found visible posts, stop scanning further
+        if (posts.length > 0) break;
       }
 
       // Check horizontal bounds
@@ -114,16 +114,13 @@ window.__postgrab_extractVisiblePosts = () => {
       if (posts.length >= 3) break;
     }
 
-    if (posts.length === 0) {
-      return { success: false, error: 'No visible posts in viewport' };
-    }
-
     return {
       success: true,
       totalVisible: posts.length,
       posts
     };
   } catch (err) {
-    return { success: false, error: String(err) };
+    console.error('[PostGrab Extractor] Exception during post extraction:', err);
+    return { success: false, posts: [], error: String(err) };
   }
 };

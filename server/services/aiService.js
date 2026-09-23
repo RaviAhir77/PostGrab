@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 
 const PROFILE_PATH = path.join(__dirname, '..', 'profile.json');
 
@@ -36,116 +37,160 @@ function extractFirstName(author) {
 }
 
 /**
- * Extract matched skills and determine the best matching project from Ravi's resume
+ * Extract role or key topic from post content
  */
-function matchResumeHighlights(content, profile) {
-  const text = (content || '').toLowerCase();
-
-  // Role detection
+function extractRoleFromPost(content) {
+  if (!content) return 'Full Stack Developer';
   const roleMatch = content.match(/(?:hiring|looking for|seeking|open position for|need a|opening for)\s+(?:an?\s+)?([A-Za-z0-9\s-]{3,35}?(?:developer|engineer|lead|architect|specialist|intern))/i);
-  let likelyRole = roleMatch ? roleMatch[1].trim() : '';
+  if (roleMatch && roleMatch[1]) return roleMatch[1].trim();
 
-  // Theme matching
-  const hasERP = /erp|import|export|invoice|billing|inventory|accounting|gst|compliance/i.test(text);
-  const hasRealtime = /webrtc|livekit|agora|stream|video|audio|socket\.?io|chat|messaging/i.test(text);
-  const hasMobile = /react native|mobile|android|ios|app developer/i.test(text);
-  const hasCloudDevOps = /docker|linux|nginx|pm2|cloudflare|vps|deployment|devops/i.test(text);
-  const hasReactNode = /react|node|express|javascript|typescript|full stack|fullstack|frontend|backend/i.test(text);
+  // Keyword role guesses based on post content
+  const text = content.toLowerCase();
+  if (text.includes('react native') || text.includes('mobile')) return 'React Native Developer';
+  if (text.includes('backend') || text.includes('node')) return 'Backend / Node.js Developer';
+  if (text.includes('frontend') || text.includes('react')) return 'Frontend / React Developer';
+  if (text.includes('full stack') || text.includes('fullstack')) return 'Full Stack Developer';
+  if (text.includes('devops') || text.includes('cloud')) return 'DevOps / Cloud Engineer';
 
-  let relevantExperienceSnippet = '';
-
-  if (hasERP) {
-    if (!likelyRole) likelyRole = 'Full Stack / ERP Developer';
-    relevantExperienceSnippet = `Currently at Thinkersky Technology, I develop on a large-scale Import & Export ERP platform with Node.js and MySQL (180+ relational tables), automating e-Invoicing, e-Way Bills, and scaling complex forms from 50 to 800+ items. I also architected Pragyaan ERP, a full-stack system with React, Node.js, and automated PDF quotation/invoice generation.`;
-  } else if (hasRealtime) {
-    if (!likelyRole) likelyRole = 'Real-Time / Full Stack Engineer';
-    relevantExperienceSnippet = `I have extensive hands-on experience building low-latency real-time applications, including JAM (a live video streaming and audio room platform where I migrated infrastructure from Agora to self-hosted LiveKit, reducing costs by 80%) as well as WebRTC voice/video chat and Socket.IO multiplayer systems.`;
-  } else if (hasMobile) {
-    if (!likelyRole) likelyRole = 'React Native / Mobile Developer';
-    relevantExperienceSnippet = `I developed the Dairy Agent mobile application using React Native, TypeScript, Node.js, and Prisma ORM, implementing shift-wise delivery tracking, role-based workflows, and automated invoice collections on production Linux VPS.`;
-  } else if (hasCloudDevOps) {
-    if (!likelyRole) likelyRole = 'Full Stack / Backend Engineer';
-    relevantExperienceSnippet = `I have strong production deployment and DevOps experience managing self-hosted Linux VPS environments with Docker, Nginx reverse proxy, PM2, and Cloudflare services (Workers, R2, D1), building highly resilient REST APIs with Node.js and PostgreSQL.`;
-  } else {
-    if (!likelyRole) likelyRole = 'Full Stack Developer';
-    relevantExperienceSnippet = `I bring 2+ years of full-stack engineering experience building robust web applications with Node.js, React.js, Express, PostgreSQL, MongoDB, and MySQL—specializing in clean API design, database architecture, and production deployment on Linux VPS.`;
-  }
-
-  return { likelyRole, relevantExperienceSnippet };
+  return 'this opportunity';
 }
 
 /**
- * Intelligent Generator: synthesizes a human, professional cold email using Ravi's real resume data
+ * Short & Sweet Template Generator (Fallback)
+ * Under 50 words, based on the post content, NO lengthy resume dumping in the body.
  */
 function generateTemplateEmail(post, profile) {
   const firstName = extractFirstName(post.author);
-  const { likelyRole, relevantExperienceSnippet } = matchResumeHighlights(post.content, profile);
+  const role = extractRoleFromPost(post.content);
 
-  const subject = `Application for ${likelyRole} - ${profile.fullName}`;
+  const subject = role !== 'this opportunity'
+    ? `Regarding your post for ${role} - ${profile.fullName}`
+    : `Regarding your LinkedIn post - ${profile.fullName}`;
 
   const body = [
     `Hi ${firstName},`,
     '',
-    `I saw your recent LinkedIn post regarding ${likelyRole} and wanted to reach out directly. With 2+ years of production experience developing scalable web applications using Node.js, React.js, Express, PostgreSQL, and MongoDB, I would love to contribute to your team.`,
+    `I saw your post regarding ${role} and wanted to reach out. As a ${profile.title || 'Full Stack Developer'} with 2+ years of experience building modern web applications, I would love to contribute to your team.`,
     '',
-    relevantExperienceSnippet,
+    `I have attached my updated resume for your review.`,
     '',
-    `I have attached my updated resume for your quick review.`,
-    '',
-    `Are you open for a brief 10-minute introductory call this week to discuss how I can add immediate value to your project?`,
+    `Would you be open for a quick 5-minute chat this week?`,
     '',
     `Best regards,`,
     `${profile.fullName}`,
-    `${profile.title} | ${profile.location}`,
+    `${profile.title}`,
     `Phone: ${profile.phone}`,
     `Email: ${profile.contactEmail}`,
-    `LinkedIn: ${profile.linkedinUrl}`,
-    `GitHub: ${profile.githubUrl}`
+    `LinkedIn: ${profile.linkedinUrl}`
   ].join('\n');
 
   return {
     subject,
     body,
-    generator: 'resume-matched-template'
+    generator: 'short-and-sweet-template'
   };
 }
 
 /**
- * Attempt to query local LLM (Ollama or OpenCode HTTP server) if active
+ * OpenCode CLI Generator
+ * Runs `opencode run` locally on the server to synthesize a short, sweet cold email.
+ */
+async function queryOpenCodeCLI(post, profile) {
+  return new Promise((resolve, reject) => {
+    const role = extractRoleFromPost(post.content);
+    const sanitizedPost = (post.content || '').slice(0, 600).replace(/["`$\\]/g, ' ');
+
+    const prompt = `Write a very short, polite, and sweet cold email (under 50 words) to ${post.author || 'the hiring manager'} based on what they are looking for in their LinkedIn post.
+IMPORTANT RULES:
+1. Do NOT put resume project details, bullet points, or tech stack lists in the body.
+2. Directly reference what their post is asking for.
+3. State that you have 2+ years of full-stack engineering experience and would love to help.
+4. Mention that Ravi Gagiya's updated resume is attached.
+5. Ask for a quick 5-minute introductory call.
+6. Sign off with:
+Best regards,
+Ravi Gagiya
+Full Stack Developer
+Phone: +91 7096206404
+Email: ravigagiya.cse@gmail.com
+LinkedIn: https://linkedin.com/in/ravigagiya
+
+LinkedIn Post Content:
+"${sanitizedPost}"
+
+Return STRICT JSON format ONLY:
+{
+  "subject": "Regarding your post for ${role} - Ravi Gagiya",
+  "body": "Hi [Name],\\n\\n[short email body]\\n\\nBest regards,\\nRavi Gagiya..."
+}`;
+
+    // Execute opencode run
+    exec(`opencode run "${prompt.replace(/"/g, '\\"')}"`, { timeout: 18000 }, (error, stdout, stderr) => {
+      if (error) {
+        return reject(new Error(`OpenCode execution failed: ${error.message}`));
+      }
+
+      const text = stdout || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.subject && parsed.body) {
+            return resolve({
+              subject: parsed.subject,
+              body: parsed.body,
+              generator: 'opencode-cli'
+            });
+          }
+        } catch (_) {}
+      }
+
+      // If OpenCode returned plain text without JSON
+      if (text.trim().length > 20) {
+        const subjectMatch = text.match(/^Subject:\s*(.*)$/im);
+        const subject = subjectMatch 
+          ? subjectMatch[1].trim() 
+          : `Regarding your post for ${role} - ${profile.fullName}`;
+        const body = text.replace(/^Subject:\s*.*$/im, '').trim();
+
+        return resolve({
+          subject,
+          body,
+          generator: 'opencode-cli'
+        });
+      }
+
+      reject(new Error('OpenCode returned empty output'));
+    });
+  });
+}
+
+/**
+ * Standard HTTP LLM fallback (Ollama / OpenCode HTTP server if running)
  */
 async function queryLocalLLM(post, profile) {
   const endpoint = process.env.AI_ENDPOINT || 'http://localhost:11434/api/generate';
   const model = process.env.AI_MODEL || 'llama3';
+  const role = extractRoleFromPost(post.content);
 
-  const systemPrompt = `You are an executive cold email coach representing software engineer Ravi Gagiya.
-Write a personalized, concise, high-impact cold outreach email to the LinkedIn poster.
+  const systemPrompt = `Write a short, polite, and sweet cold email (under 50 words) to ${post.author || 'the hiring manager'}.
+Do NOT put resume bullet points or project lists in the body.
+Directly reference what their post is asking for.
+Mention that Ravi Gagiya's updated resume is attached.
+Ask for a quick 5-minute call.
+Signature: Ravi Gagiya, Full Stack Developer, Phone: +91 7096206404, Email: ravigagiya.cse@gmail.com, LinkedIn: https://linkedin.com/in/ravigagiya
 
-Candidate Resume Profile:
-- Name: ${profile.fullName}
-- Title: ${profile.title}
-- Experience: ${profile.yearsOfExperience}
-- Skills: ${JSON.stringify(profile.technicalSkills)}
-- Notable Projects: ${JSON.stringify(profile.notableProjects)}
-- Guidelines: ${(profile.guidelines || []).join('; ')}
-
-Post Details:
-- Poster / Author: ${post.author || 'Hiring Manager'}
-- Post Text:
+Post Content:
 ${post.content}
 
-Instructions:
-1. Reference the exact requirements in the post.
-2. Highlight 1-2 directly matching projects from Ravi's real experience (e.g. ERP platforms, LiveKit WebRTC cost reduction, Dairy Agent React Native, or high-performance Node.js/React APIs).
-3. Mention that Ravi's resume is attached.
-4. End with phone (+91 7096206404), email (${profile.contactEmail}), LinkedIn, and GitHub in signature.
-5. Return JSON format ONLY:
+Return JSON only:
 {
-  "subject": "Compelling subject line",
-  "body": "Complete cold email text"
+  "subject": "Regarding your post for ${role} - Ravi Gagiya",
+  "body": "..."
 }`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const res = await fetch(endpoint, {
@@ -161,8 +206,7 @@ Instructions:
     });
 
     clearTimeout(timeout);
-
-    if (!res.ok) throw new Error(`LLM endpoint returned status ${res.status}`);
+    if (!res.ok) throw new Error(`LLM status ${res.status}`);
 
     const data = await res.json();
     const rawResponse = data.response || data.text || '';
@@ -186,18 +230,35 @@ Instructions:
 
 /**
  * Main AI Generation Entry Point
+ * Tries:
+ * 1. OpenCode CLI (`opencode run`)
+ * 2. HTTP LLM endpoint (Ollama / Local)
+ * 3. Short & Sweet Template (Guaranteed fast fallback)
  */
 async function generateColdEmail(post) {
   const profile = getProfile();
 
+  // 1. Try OpenCode CLI first
   try {
-    const aiResult = await queryLocalLLM(post, profile);
-    console.log(`[AI Service] Generated email via ${aiResult.generator}`);
-    return aiResult;
-  } catch (err) {
-    console.log(`[AI Service] Using resume-matched generator (${err.message})`);
-    return generateTemplateEmail(post, profile);
+    const opencodeResult = await queryOpenCodeCLI(post, profile);
+    console.log(`[AI Service] Generated email via ${opencodeResult.generator}`);
+    return opencodeResult;
+  } catch (opencodeErr) {
+    console.log(`[AI Service] OpenCode CLI unavailable: ${opencodeErr.message}`);
   }
+
+  // 2. Try HTTP LLM endpoint (if configured)
+  try {
+    const llmResult = await queryLocalLLM(post, profile);
+    console.log(`[AI Service] Generated email via ${llmResult.generator}`);
+    return llmResult;
+  } catch (llmErr) {
+    // Expected if no local Ollama is active
+  }
+
+  // 3. Fallback: Short & Sweet Template (under 50 words, based on post content)
+  console.log('[AI Service] Using Short & Sweet resume-matched generator');
+  return generateTemplateEmail(post, profile);
 }
 
 module.exports = {

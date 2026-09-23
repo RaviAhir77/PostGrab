@@ -1,10 +1,11 @@
-/* PostGrab In-Page Sidebar Styles */
+/* PostGrab In-Page Sidebar Styles (Shadow DOM Container) */
 #postgrab-sidebar-container {
   all: initial;
   position: fixed !important;
   top: 0 !important;
   right: 0 !important;
   width: 440px !important;
+  max-width: 100vw !important;
   height: 100vh !important;
   z-index: 2147483647 !important;
   pointer-events: none !important;
@@ -17,13 +18,11 @@
   transform: translateX(0) !important;
 }
 
-#postgrab-sidebar-iframe {
-  width: 100% !important;
-  height: 100% !important;
-  border: none !important;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5) !important;
-  background-color: #0a0e17 !important;
-  color-scheme: dark !important;
+/* Mobile full-width overlay */
+@media (max-width: 500px) {
+  #postgrab-sidebar-container {
+    width: 100vw !important;
+  }
 }
 
 /* Floating quick toggle tab pinned to right edge */

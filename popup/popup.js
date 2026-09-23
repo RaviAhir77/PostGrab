@@ -55,18 +55,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSavedPosts();
   await scanVisiblePosts();
 
-  // Keep side panel in sync when user switches tabs or navigates
-  if (chrome.tabs && chrome.tabs.onActivated) {
-    chrome.tabs.onActivated.addListener(() => {
-      scanVisiblePosts();
-    });
-  }
-  if (chrome.tabs && chrome.tabs.onUpdated) {
-    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-      if (changeInfo.status === 'complete') {
+  // Keep standalone side panel/popup in sync when user switches tabs or navigates
+  if (window === window.top && typeof chrome !== 'undefined' && chrome.tabs) {
+    if (chrome.tabs.onActivated) {
+      chrome.tabs.onActivated.addListener(() => {
         scanVisiblePosts();
-      }
-    });
+      });
+    }
+    if (chrome.tabs.onUpdated) {
+      chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+        if (changeInfo.status === 'complete') {
+          scanVisiblePosts();
+        }
+      });
+    }
   }
 });
 
@@ -93,10 +95,30 @@ function setupNavigation() {
 
 // --- Scan Visible Posts in Active Tab ---
 async function scanVisiblePosts() {
+  if (!hasValidExtensionContext()) {
+    setConnectionStatus('disconnected', 'Disconnected');
+    return;
+  }
+
   setDetectState('loading');
   setConnectionStatus('checking', 'Scanning...');
 
+  // 1. If running inside the companion sidebar iframe, ask parent page content script directly
+  if (window !== window.top) {
+    try {
+      window.parent.postMessage({ action: 'requestManualScan' }, '*');
+    } catch (_) {}
+    return;
+  }
+
+  // 2. Standalone popup mode (fallback when opened from extension action button)
   try {
+    if (!chrome?.tabs || !chrome?.scripting) {
+      setDetectState('no-posts');
+      setConnectionStatus('disconnected', 'No Posts Detected');
+      return;
+    }
+
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab || !tab.url || !tab.url.includes('linkedin.com')) {
@@ -134,6 +156,7 @@ async function scanVisiblePosts() {
     setDetectState('success');
 
   } catch (err) {
+    if (!hasValidExtensionContext()) return;
     console.warn('Scan error:', err);
     setDetectState('no-posts');
     setConnectionStatus('disconnected', 'Scan Error');
@@ -221,7 +244,16 @@ function renderVisiblePosts() {
 
 // --- Extension Context Safety Guard ---
 function hasValidExtensionContext() {
-  return typeof chrome !== 'undefined' && chrome.runtime && !!chrome.runtime.id;
+  try {
+    if (typeof chrome === 'undefined' || !chrome.runtime) return false;
+    const manifest = chrome.runtime.getManifest();
+    if (!manifest) return false;
+    const url = chrome.runtime.getURL('');
+    if (!url || url.includes('invalid')) return false;
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 // --- Settings & Drafted State Operations ---
@@ -260,18 +292,38 @@ async function handleDraftEmail(post, btn) {
   btn.textContent = '⏳ Drafting...';
 
   try {
-    const cleanServerUrl = (serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
-    const endpoint = `${cleanServerUrl}/api/create-draft`;
+    const targetServerUrl = serverUrl || 'http://103.138.96.132:7777';
+    console.log('[PostGrab Popup] Requesting draft creation via background worker for:', targetServerUrl);
 
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ post })
+    // Call background service worker to completely bypass Mixed Content (HTTPS page -> HTTP server)
+    const result = await new Promise((resolve) => {
+      if (hasValidExtensionContext() && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: 'createDraftOnServer',
+          serverUrl: targetServerUrl,
+          post: post
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn('[PostGrab Popup] Runtime message error:', chrome.runtime.lastError.message);
+            resolve({ success: false, error: chrome.runtime.lastError.message });
+          } else {
+            resolve(response || { success: false, error: 'No response from background worker' });
+          }
+        });
+      } else {
+        // Direct fetch fallback
+        fetch(`${targetServerUrl.replace(/\/+$/, '')}/api/create-draft`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ post })
+        })
+          .then(r => r.json().then(data => resolve({ success: r.ok && data.success, data, error: data.error })))
+          .catch(e => resolve({ success: false, error: e.message }));
+      }
     });
 
-    const data = await res.json();
-
-    if (res.ok && data.success) {
+    if (result && result.success) {
+      const data = result.data;
       draftedPostIds.add(post.id);
       if (hasValidExtensionContext()) {
         try {
@@ -284,7 +336,7 @@ async function handleDraftEmail(post, btn) {
       btn.title = 'Email already saved to Gmail Drafts';
       showToast(`Draft created: "${data.subject || 'Cold Email'}" saved to Gmail!`);
     } else {
-      throw new Error(data.error || `Server returned status ${res.status}`);
+      throw new Error((result && result.error) || 'Draft creation failed on server');
     }
   } catch (err) {
     console.error('Draft error:', err);
@@ -574,18 +626,32 @@ function setupEventListeners() {
   }
 
   const handleLivePostsUpdate = (posts) => {
-    if (isAutoSyncEnabled && posts && posts.length > 0) {
-      const newIds = posts.map(p => p.id).join('|');
-      const oldIds = visiblePosts.map(p => p.id).join('|');
-      if (newIds === oldIds) return; // Zero work if posts haven't changed!
+    console.log(`[PostGrab Popup] handleLivePostsUpdate received ${posts ? posts.length : 0} post(s).`);
 
-      visiblePosts = posts;
-      setConnectionStatus('connected', 'LinkedIn Connected');
-      visibleCountBadge.textContent = visiblePosts.length;
-      visibleHeader.textContent = `Visible on screen (${visiblePosts.length})`;
-      renderVisiblePosts();
-      setDetectState('success');
+    if (!isAutoSyncEnabled) {
+      console.log('[PostGrab Popup] Auto-sync is currently paused.');
+      return;
     }
+
+    if (!posts || posts.length === 0) {
+      visiblePosts = [];
+      visibleCountBadge.textContent = '0';
+      visibleHeader.textContent = 'Visible on screen (0)';
+      setConnectionStatus('connected', 'LinkedIn Connected');
+      setDetectState('no-posts');
+      return;
+    }
+
+    const newIds = posts.map(p => p.id).join('|');
+    const oldIds = visiblePosts.map(p => p.id).join('|');
+    if (newIds === oldIds) return; // Zero work if posts haven't changed
+
+    visiblePosts = posts;
+    setConnectionStatus('connected', 'LinkedIn Connected');
+    visibleCountBadge.textContent = visiblePosts.length;
+    visibleHeader.textContent = `Visible on screen (${visiblePosts.length})`;
+    renderVisiblePosts();
+    setDetectState('success');
   };
 
   // 1. Listen from Iframe Parent

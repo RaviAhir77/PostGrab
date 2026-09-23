@@ -22,6 +22,12 @@
   "content_scripts": [
     {
       "matches": ["https://*.linkedin.com/*"],
+      "js": ["scripts/shield.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.linkedin.com/*"],
       "css": ["scripts/content.css"],
       "js": ["scripts/extractor.js", "scripts/content.js"],
       "run_at": "document_idle"
@@ -30,10 +36,6 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "popup/popup.html",
-        "popup/popup.css",
-        "popup/popup.js",
-        "scripts/extractor.js",
         "icons/icon16.png",
         "icons/icon48.png",
         "icons/icon128.png"
