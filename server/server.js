@@ -26,7 +26,39 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     gmailConfigured: hasGmailUser && hasGmailPass,
     dryRunMode: isDryRun,
-    aiEndpoint: process.env.AI_ENDPOINT || 'http://localhost:11434/api/generate'
+    aiProvider: 'opencode (port 4096)'
+  });
+});
+
+// Test OpenCode Endpoint
+app.get('/api/test-opencode', (req, res) => {
+  const { execFile, exec } = require('child_process');
+
+  execFile('opencode', ['run', 'Say hello in 5 words'], { timeout: 15000 }, (err, stdout) => {
+    if (!err && stdout && stdout.trim()) {
+      return res.json({
+        status: 'active',
+        opencodeWorking: true,
+        output: stdout.trim()
+      });
+    }
+
+    exec('opencode run "Say hello in 5 words"', { timeout: 15000 }, (cmdErr, cmdStdout) => {
+      if (!cmdErr && cmdStdout && cmdStdout.trim()) {
+        return res.json({
+          status: 'active',
+          opencodeWorking: true,
+          output: cmdStdout.trim()
+        });
+      }
+
+      res.json({
+        status: 'idle_or_unconfigured',
+        opencodeWorking: false,
+        error: (cmdErr && cmdErr.message) || (err && err.message) || 'No output from OpenCode',
+        tip: 'Run "opencode auth login" on your VPS terminal to connect an AI provider.'
+      });
+    });
   });
 });
 

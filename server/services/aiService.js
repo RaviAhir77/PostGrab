@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { execFile, exec } = require('child_process');
 
 const PROFILE_PATH = path.join(__dirname, '..', 'profile.json');
 
@@ -18,6 +18,8 @@ function getProfile() {
       title: 'Full Stack Developer',
       phone: '+91 7096206404',
       contactEmail: 'ravigagiya.cse@gmail.com',
+      residentialCity: 'Rajkot, Gujarat',
+      currentCTC: '25,000 Month',
       linkedinUrl: 'https://linkedin.com/in/ravigagiya',
       githubUrl: 'https://github.com/RaviAhir77'
     };
@@ -25,239 +27,251 @@ function getProfile() {
 }
 
 /**
- * Extract recipient's first name from post author
+ * Extract recipient greeting (e.g. "Hi Anzo Technology Team," or "Hi Pooja,")
  */
-function extractFirstName(author) {
-  if (!author || author === 'LinkedIn Member' || author.toLowerCase().includes('recruiter') || author.toLowerCase().includes('hiring')) {
-    return 'there';
+function extractRecipientGreeting(author, content) {
+  if (!author || author === 'LinkedIn Member' || author.toLowerCase().includes('hiring')) {
+    const compMatch = (content || '').match(/(?:at|join|with)\s+([A-Z][A-Za-z0-9&.\s]{2,25}?(?:Technologies|Technology|Solutions|Services|LLC|Inc|Labs|Studio|Pvt|Ltd|Team))/i);
+    if (compMatch && compMatch[1]) {
+      return `Hi ${compMatch[1].trim()} Team,`;
+    }
+    return 'Hi Hiring Team,';
   }
+
   const clean = author.replace(/^(dr\.|mr\.|ms\.|mrs\.)\s+/i, '').trim();
+
+  const isCompany = /technology|technologies|solutions|services|llc|inc|labs|studio|consulting|infotech|software|pvt|ltd|team/i.test(clean);
+  if (isCompany) {
+    return clean.toLowerCase().endsWith('team') ? `Hi ${clean},` : `Hi ${clean} Team,`;
+  }
+
   const parts = clean.split(/\s+/);
-  return parts[0] || 'there';
+  if (parts.length > 1) {
+    return `Hi ${parts[0]},`;
+  }
+
+  return `Hi ${clean} Team,`;
 }
 
 /**
- * Extract role or key topic from post content
+ * Extract target role from LinkedIn post
  */
 function extractRoleFromPost(content) {
   if (!content) return 'Full Stack Developer';
-  const roleMatch = content.match(/(?:hiring|looking for|seeking|open position for|need a|opening for)\s+(?:an?\s+)?([A-Za-z0-9\s-]{3,35}?(?:developer|engineer|lead|architect|specialist|intern))/i);
+
+  const roleMatch = content.match(/(?:hiring|looking for|seeking|open position for|need a|opening for|opportunity for)\s+(?:an?\s+)?([A-Za-z0-9\s-]{3,35}?(?:developer|engineer|lead|architect|specialist|intern))/i);
   if (roleMatch && roleMatch[1]) return roleMatch[1].trim();
 
-  // Keyword role guesses based on post content
   const text = content.toLowerCase();
+  if (text.includes('mern') || (text.includes('react') && text.includes('node'))) return 'MERN Stack Developer';
+  if (text.includes('node') || text.includes('backend') || text.includes('express')) return 'Node.js Developer';
   if (text.includes('react native') || text.includes('mobile')) return 'React Native Developer';
-  if (text.includes('backend') || text.includes('node')) return 'Backend / Node.js Developer';
-  if (text.includes('frontend') || text.includes('react')) return 'Frontend / React Developer';
+  if (text.includes('react') || text.includes('frontend')) return 'React.js Developer';
   if (text.includes('full stack') || text.includes('fullstack')) return 'Full Stack Developer';
-  if (text.includes('devops') || text.includes('cloud')) return 'DevOps / Cloud Engineer';
 
-  return 'this opportunity';
+  return 'Full Stack Developer';
 }
 
 /**
- * Short & Sweet Template Generator (Fallback)
- * Under 50 words, based on the post content, NO lengthy resume dumping in the body.
+ * Match relevant skills dynamically based on the post
+ */
+function matchRelevantSkills(content) {
+  const text = (content || '').toLowerCase();
+
+  if (text.includes('mern') || (text.includes('react') && text.includes('node') && text.includes('mongo'))) {
+    return 'experience working with Node.js, Express.js, React.js, MongoDB, MySQL, REST APIs, and building production web applications, including ERP and real-time platforms.';
+  }
+
+  if (text.includes('node') || text.includes('backend')) {
+    return '2 years of experience working with Node.js, Express.js, REST APIs, MongoDB, PostgreSQL, and MySQL. I have worked on production applications, ERP systems, third-party integrations, debugging, performance optimization, and backend development.';
+  }
+
+  if (text.includes('react native') || text.includes('mobile')) {
+    return 'experience working with React Native, TypeScript, Node.js, PostgreSQL, and REST APIs, along with building, testing, and deploying production mobile applications.';
+  }
+
+  if (text.includes('full stack') || text.includes('fullstack') || text.includes('typescript')) {
+    return 'experience working with Node.js, React.js, JavaScript/TypeScript, PostgreSQL, REST APIs, and Git, along with building and maintaining production ERP and business applications.';
+  }
+
+  return '2 years of experience working with Node.js, Express.js, React.js, REST APIs, MongoDB, and PostgreSQL, along with building and maintaining production applications.';
+}
+
+/**
+ * Intelligent Fallback Template Generator
+ * Used when OpenCode is not running or configuring.
+ * Note: Salary/CTC is NEVER included unless the post explicitly asks for it!
  */
 function generateTemplateEmail(post, profile) {
-  const firstName = extractFirstName(post.author);
+  const greeting = extractRecipientGreeting(post.author, post.content);
   const role = extractRoleFromPost(post.content);
+  const skillsSnippet = matchRelevantSkills(post.content);
 
-  const subject = role !== 'this opportunity'
-    ? `Regarding your post for ${role} - ${profile.fullName}`
-    : `Regarding your LinkedIn post - ${profile.fullName}`;
+  const subject = `Application for ${role} - ${profile.fullName}`;
 
-  const body = [
-    `Hi ${firstName},`,
+  // Smart negotiation rule: ONLY show CTC if the post explicitly asked for it!
+  const postLower = (post.content || '').toLowerCase();
+  const askedForCTC = /\b(current\s*ctc|expected\s*ctc|salary|package|compensation|budget)\b/i.test(postLower);
+  const ctcSnippet = askedForCTC ? `Current CTC: ${profile.currentCTC || '25,000 / Month'}` : '';
+
+  // Only mention city if asked for location / onsite
+  const askedForLocation = /\b(location|city|onsite|office|relocat)\b/i.test(postLower);
+  const citySnippet = askedForLocation ? `Residential City: ${profile.residentialCity || 'Rajkot, Gujarat'}` : '';
+
+  const metaLines = [citySnippet, ctcSnippet].filter(Boolean);
+
+  const bodyParts = [
+    greeting,
     '',
-    `I saw your post regarding ${role} and wanted to reach out. As a ${profile.title || 'Full Stack Developer'} with 2+ years of experience building modern web applications, I would love to contribute to your team.`,
+    `I came across your opening for the ${role} role and would like to apply.`,
     '',
-    `I have attached my updated resume for your review.`,
-    '',
-    `Would you be open for a quick 5-minute chat this week?`,
+    `I have ${skillsSnippet}`,
+    ''
+  ];
+
+  if (metaLines.length > 0) {
+    bodyParts.push(...metaLines, '');
+  }
+
+  bodyParts.push(
+    `I’ve attached my resume for your consideration. I’d be happy to discuss the opportunity further.`,
     '',
     `Best regards,`,
     `${profile.fullName}`,
-    `${profile.title}`,
-    `Phone: ${profile.phone}`,
-    `Email: ${profile.contactEmail}`,
-    `LinkedIn: ${profile.linkedinUrl}`
-  ].join('\n');
+    profile.phone || '+91 7096206404'
+  );
 
   return {
     subject,
-    body,
-    generator: 'short-and-sweet-template'
+    body: bodyParts.join('\n'),
+    generator: 'template'
   };
 }
 
 /**
- * OpenCode CLI Generator
- * Runs `opencode run` locally on the server to synthesize a short, sweet cold email.
+ * OpenCode AI Generator
+ * Gives OpenCode smart strategic guidance instead of rigid copy-pasting.
+ * Lets the AI adapt intelligently to the LinkedIn post while maintaining Ravi's winning style.
  */
-async function queryOpenCodeCLI(post, profile) {
+async function queryOpenCode(post, profile) {
   return new Promise((resolve, reject) => {
+    const greeting = extractRecipientGreeting(post.author, post.content);
     const role = extractRoleFromPost(post.content);
-    const sanitizedPost = (post.content || '').slice(0, 600).replace(/["`$\\]/g, ' ');
+    const author = post.author || 'the hiring manager';
+    const sanitizedPost = (post.content || '').slice(0, 1000).replace(/\r?\n/g, ' ');
 
-    const prompt = `Write a very short, polite, and sweet cold email (under 50 words) to ${post.author || 'the hiring manager'} based on what they are looking for in their LinkedIn post.
-IMPORTANT RULES:
-1. Do NOT put resume project details, bullet points, or tech stack lists in the body.
-2. Directly reference what their post is asking for.
-3. State that you have 2+ years of full-stack engineering experience and would love to help.
-4. Mention that Ravi Gagiya's updated resume is attached.
-5. Ask for a quick 5-minute introductory call.
-6. Sign off with:
+    const prompt = `You are an elite tech cold-email writer drafting an email for software developer Ravi Gagiya.
+Ravi is applying to a LinkedIn hiring post.
+
+CANDIDATE PROFILE:
+- Name: Ravi Gagiya
+- Role: Full Stack Developer (2+ years production experience)
+- Skills: Node.js, Express.js, React.js, TypeScript, JavaScript, PostgreSQL, MongoDB, MySQL, REST APIs, Git
+- Real Work: Built production ERP platforms, real-time apps, third-party API integrations, and backend optimizations
+- Location: Rajkot, Gujarat (Only mention if the post asks for location or city)
+- Resume: Attached as Ravi_Gagiya_Resume.pdf
+- Contact: +91 7096206404
+
+POST CONTEXT:
+- Poster: ${author}
+- Suggested Greeting: ${greeting}
+- Post Text: "${sanitizedPost}"
+
+CRITICAL INSTRUCTIONS:
+1. SMART & CONCISE: Write a short, sweet, punchy cold email (under 65 words). Don't sound like a generic template bot. Sound like an energetic, skilled developer speaking directly to the hiring team.
+2. RELEVANCE: Read what the post is looking for (tech stack, role, problems). Highlight 1-2 exact matching technical capabilities from Ravi's background that solve what they need.
+3. NEGOTIATION RULE (SALARY / CTC): NEVER mention salary or current CTC unless the post explicitly demands it (e.g. "mention CTC"). If not asked, DO NOT mention salary at all. Keep it private for later negotiation.
+4. CALL TO ACTION: Mention that Ravi's resume is attached for review and invite a quick introductory conversation.
+5. SIGNATURE:
 Best regards,
 Ravi Gagiya
-Full Stack Developer
-Phone: +91 7096206404
-Email: ravigagiya.cse@gmail.com
-LinkedIn: https://linkedin.com/in/ravigagiya
++91 7096206404
 
-LinkedIn Post Content:
-"${sanitizedPost}"
-
-Return STRICT JSON format ONLY:
+OUTPUT FORMAT:
+Respond STRICTLY with valid JSON:
 {
-  "subject": "Regarding your post for ${role} - Ravi Gagiya",
-  "body": "Hi [Name],\\n\\n[short email body]\\n\\nBest regards,\\nRavi Gagiya..."
+  "subject": "Application for ${role} - Ravi Gagiya",
+  "body": "..."
 }`;
 
-    // Execute opencode run
-    exec(`opencode run "${prompt.replace(/"/g, '\\"')}"`, { timeout: 18000 }, (error, stdout, stderr) => {
-      if (error) {
-        return reject(new Error(`OpenCode execution failed: ${error.message}`));
-      }
+    const handleOutput = (text) => {
+      // Remove OpenCode CLI status header (e.g. "> build · space-bunny-free")
+      const clean = text.replace(/^>.*$/gm, '').trim();
+      if (!clean) return reject(new Error('OpenCode returned empty output'));
 
-      const text = stdout || '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      // 1. Try direct JSON parsing
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
           const parsed = JSON.parse(jsonMatch[0]);
           if (parsed.subject && parsed.body) {
             return resolve({
-              subject: parsed.subject,
-              body: parsed.body,
-              generator: 'opencode-cli'
+              subject: parsed.subject.trim(),
+              body: parsed.body.trim(),
+              generator: 'opencode-ai'
             });
           }
         } catch (_) {}
       }
 
-      // If OpenCode returned plain text without JSON
-      if (text.trim().length > 20) {
-        const subjectMatch = text.match(/^Subject:\s*(.*)$/im);
-        const subject = subjectMatch 
-          ? subjectMatch[1].trim() 
-          : `Regarding your post for ${role} - ${profile.fullName}`;
-        const body = text.replace(/^Subject:\s*.*$/im, '').trim();
+      // 2. If OpenCode output plain text email with Subject:
+      if (clean.length > 25) {
+        const subjectMatch = clean.match(/^Subject:\s*(.*)$/im);
+        const subject = subjectMatch ? subjectMatch[1].trim() : `Application for ${role} - ${profile.fullName}`;
+        const body = clean.replace(/^Subject:\s*.*$/im, '').replace(/^```[a-z]*|```$/g, '').trim();
 
         return resolve({
           subject,
           body,
-          generator: 'opencode-cli'
+          generator: 'opencode-ai'
         });
       }
 
-      reject(new Error('OpenCode returned empty output'));
+      reject(new Error('Could not parse OpenCode output'));
+    };
+
+    // Execute via execFile (immune to shell quote escaping bugs)
+    execFile('opencode', ['run', prompt], { timeout: 25000 }, (err, stdout) => {
+      if (!err && stdout && stdout.trim()) {
+        return handleOutput(stdout);
+      }
+
+      // Fast-fail if opencode is not installed in PATH
+      if (err && err.code === 'ENOENT') {
+        return reject(new Error('OpenCode CLI not found in system PATH'));
+      }
+
+      // Fallback via exec (e.g. if opencode is a shell wrapper)
+      const escaped = prompt.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+      exec(`opencode run "${escaped}"`, { timeout: 20000 }, (cmdErr, cmdStdout) => {
+        if (cmdErr) {
+          return reject(new Error(`OpenCode execution error: ${cmdErr.message}`));
+        }
+        handleOutput(cmdStdout || '');
+      });
     });
   });
 }
 
 /**
- * Standard HTTP LLM fallback (Ollama / OpenCode HTTP server if running)
- */
-async function queryLocalLLM(post, profile) {
-  const endpoint = process.env.AI_ENDPOINT || 'http://localhost:11434/api/generate';
-  const model = process.env.AI_MODEL || 'llama3';
-  const role = extractRoleFromPost(post.content);
-
-  const systemPrompt = `Write a short, polite, and sweet cold email (under 50 words) to ${post.author || 'the hiring manager'}.
-Do NOT put resume bullet points or project lists in the body.
-Directly reference what their post is asking for.
-Mention that Ravi Gagiya's updated resume is attached.
-Ask for a quick 5-minute call.
-Signature: Ravi Gagiya, Full Stack Developer, Phone: +91 7096206404, Email: ravigagiya.cse@gmail.com, LinkedIn: https://linkedin.com/in/ravigagiya
-
-Post Content:
-${post.content}
-
-Return JSON only:
-{
-  "subject": "Regarding your post for ${role} - Ravi Gagiya",
-  "body": "..."
-}`;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: model,
-        prompt: systemPrompt,
-        stream: false,
-        format: 'json'
-      }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeout);
-    if (!res.ok) throw new Error(`LLM status ${res.status}`);
-
-    const data = await res.json();
-    const rawResponse = data.response || data.text || '';
-    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed.subject && parsed.body) {
-        return {
-          subject: parsed.subject,
-          body: parsed.body,
-          generator: `local-llm (${model})`
-        };
-      }
-    }
-    throw new Error('LLM output format not JSON');
-  } catch (err) {
-    clearTimeout(timeout);
-    throw err;
-  }
-}
-
-/**
  * Main AI Generation Entry Point
- * Tries:
- * 1. OpenCode CLI (`opencode run`)
- * 2. HTTP LLM endpoint (Ollama / Local)
- * 3. Short & Sweet Template (Guaranteed fast fallback)
+ * 1. Attempts OpenCode AI first (using smart prompt guidance)
+ * 2. Falls back to smart template if OpenCode is offline/not logged in
  */
 async function generateColdEmail(post) {
   const profile = getProfile();
 
-  // 1. Try OpenCode CLI first
+  // 1. Try OpenCode AI
   try {
-    const opencodeResult = await queryOpenCodeCLI(post, profile);
-    console.log(`[AI Service] Generated email via ${opencodeResult.generator}`);
-    return opencodeResult;
-  } catch (opencodeErr) {
-    console.log(`[AI Service] OpenCode CLI unavailable: ${opencodeErr.message}`);
+    console.log('[AI Service] Asking OpenCode AI to craft smart personalized email...');
+    const aiResult = await queryOpenCode(post, profile);
+    console.log(`[AI Service] Successfully generated smart email via OpenCode AI!`);
+    return aiResult;
+  } catch (err) {
+    console.log(`[AI Service] OpenCode AI unavailable (${err.message}) -> using Smart Template`);
   }
 
-  // 2. Try HTTP LLM endpoint (if configured)
-  try {
-    const llmResult = await queryLocalLLM(post, profile);
-    console.log(`[AI Service] Generated email via ${llmResult.generator}`);
-    return llmResult;
-  } catch (llmErr) {
-    // Expected if no local Ollama is active
-  }
-
-  // 3. Fallback: Short & Sweet Template (under 50 words, based on post content)
-  console.log('[AI Service] Using Short & Sweet resume-matched generator');
+  // 2. Smart Fallback Template (NO salary unless requested in post)
   return generateTemplateEmail(post, profile);
 }
 

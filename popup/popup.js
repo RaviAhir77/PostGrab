@@ -333,8 +333,9 @@ async function handleDraftEmail(post, btn) {
       btn.classList.remove('loading', 'error');
       btn.classList.add('drafted');
       btn.textContent = '✓ In Drafts';
-      btn.title = 'Email already saved to Gmail Drafts';
-      showToast(`Draft created: "${data.subject || 'Cold Email'}" saved to Gmail!`);
+      const isAi = data.generator && (data.generator.includes('ai') || data.generator.includes('opencode'));
+      const generatorLabel = isAi ? '🤖 AI Draft (OpenCode)' : '📋 Template Draft';
+      showToast(`${generatorLabel} saved to Gmail!`);
     } else {
       throw new Error((result && result.error) || 'Draft creation failed on server');
     }
