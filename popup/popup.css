@@ -483,6 +483,47 @@ html, body {
   padding: 3px 8px;
 }
 
+/* Location / Resume Selector Pill (Ultra-compact) */
+.btn-location-pill {
+  background: rgba(6, 182, 212, 0.12);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+  line-height: 1.2;
+}
+
+.btn-location-pill:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.2);
+}
+
+.btn-location-pill:active {
+  transform: scale(0.95);
+}
+
+.btn-location-pill.city-rjk {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.btn-location-pill.city-ahm {
+  background: rgba(6, 182, 212, 0.15);
+  color: #22d3ee;
+  border-color: rgba(6, 182, 212, 0.35);
+}
+
 /* AI Draft Button */
 .btn-draft-email {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);

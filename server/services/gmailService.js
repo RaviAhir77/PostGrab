@@ -37,7 +37,7 @@ async function buildMimeMessage({ from, to, subject, body, attachments = [] }) {
 /**
  * Save an email as a Draft in the user's Gmail account via IMAP
  */
-async function saveToGmailDrafts({ to, subject, body }) {
+async function saveToGmailDrafts({ to, subject, body, resumeFile = 'assets/Ravi_Gagiya_Resume.pdf' }) {
   const rawUser = process.env.GMAIL_USER || '';
   const rawPass = process.env.GMAIL_APP_PASSWORD || '';
   const user = rawUser.replace(/^["']|["']$/g, '').trim();
@@ -48,17 +48,18 @@ async function saveToGmailDrafts({ to, subject, body }) {
   console.log(`[Gmail Service] Preparing draft for: ${to || '[No recipient specified - manual review in Gmail]'}`);
   console.log(`[Gmail Service] Subject: "${subject}"`);
 
-  // Detect and attach candidate resume
+  // Detect and attach candidate resume (always presented as Ravi_Gagiya_Resume.pdf to the recruiter)
   const attachments = [];
   const attachResume = process.env.ATTACH_RESUME !== 'false';
   if (attachResume) {
-    const resumePath = path.resolve(__dirname, '..', process.env.RESUME_PATH || 'assets/Ravi_Gagiya_Resume.pdf');
+    const targetFile = resumeFile || process.env.RESUME_PATH || 'assets/Ravi_Gagiya_Resume.pdf';
+    const resumePath = path.resolve(__dirname, '..', targetFile);
     if (fs.existsSync(resumePath)) {
       attachments.push({
-        filename: 'Ravi_Gagiya_Resume.pdf',
+        filename: 'Ravi_Gagiya_Resume.pdf', // Clean display name shown to HR/Recruiter
         path: resumePath
       });
-      console.log(`[Gmail Service] Attached Resume: ${resumePath}`);
+      console.log(`[Gmail Service] Attached Resume [${targetFile}] disguised as Ravi_Gagiya_Resume.pdf`);
     } else {
       console.warn(`[Gmail Service] Resume file not found at: ${resumePath}`);
     }

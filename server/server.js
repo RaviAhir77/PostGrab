@@ -89,7 +89,7 @@ app.post('/api/profile', (req, res) => {
 // Main Endpoint: Generate Cold Email & Save to Gmail Drafts
 app.post('/api/create-draft', async (req, res) => {
   try {
-    const { post } = req.body;
+    const { post, city } = req.body;
 
     if (!post || !post.content) {
       return res.status(400).json({
@@ -100,18 +100,21 @@ app.post('/api/create-draft', async (req, res) => {
 
     console.log(`\n========================================`);
     console.log(`[Draft Request] Post Author: ${post.author || 'Unknown'}`);
+    console.log(`[Draft Request] Requested City: ${city || 'Auto-detect'}`);
     console.log(`[Draft Request] Recipient Email: ${post.email || '[None in post, draft saved for manual review]'}`);
     console.log(`[Draft Request] Content Snippet: ${post.content.slice(0, 100).replace(/\n/g, ' ')}...`);
 
-    // 1. Generate Email (via local LLM or smart template)
-    const emailData = await generateColdEmail(post);
+    // 1. Generate Email (via OpenCode AI or smart template)
+    const emailData = await generateColdEmail(post, city);
     console.log(`[Draft Request] Generated Subject: "${emailData.subject}"`);
+    console.log(`[Draft Request] Selected City: ${emailData.selectedCity} (Using: ${emailData.resumeFile})`);
 
-    // 2. Save into Gmail Drafts folder
+    // 2. Save into Gmail Drafts folder with selected resume attached
     const draftResult = await saveToGmailDrafts({
       to: post.email || undefined,
       subject: emailData.subject,
-      body: emailData.body
+      body: emailData.body,
+      resumeFile: emailData.resumeFile
     });
 
     console.log(`[Draft Request] Success! Saved to: ${draftResult.mailbox}`);
@@ -122,6 +125,8 @@ app.post('/api/create-draft', async (req, res) => {
       subject: emailData.subject,
       recipient: post.email || null,
       generator: emailData.generator,
+      selectedCity: emailData.selectedCity,
+      resumeFile: emailData.resumeFile,
       draftId: draftResult.draftId,
       mailbox: draftResult.mailbox,
       dryRun: Boolean(draftResult.dryRun),

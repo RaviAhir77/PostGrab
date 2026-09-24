@@ -49,7 +49,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ post: msg.post })
+      body: JSON.stringify({ post: msg.post, city: msg.city })
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));

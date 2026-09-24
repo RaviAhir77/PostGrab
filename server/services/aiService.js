@@ -102,7 +102,29 @@ function matchRelevantSkills(content) {
  * Used when OpenCode is not running or configuring.
  * Note: Salary/CTC is NEVER included unless the post explicitly asks for it!
  */
-function generateTemplateEmail(post, profile) {
+/**
+ * Detect target city (Ahmedabad vs Rajkot)
+ */
+function detectTargetCity(post, requestedCity) {
+  if (requestedCity) {
+    const c = String(requestedCity).trim().toUpperCase();
+    if (c === 'AHM' || c === 'AHMEDABAD') return 'AHM';
+    if (c === 'RJK' || c === 'RAJKOT') return 'RJK';
+  }
+
+  // Auto-detect Ahmedabad keywords from post text
+  const text = (post.content || '').toLowerCase();
+  const hasAhm = /\b(ahmedabad|amdavad|ahd|sg highway|s\.g\. highway|prahladnagar|prahlad nagar|bodakdev|satellite|navrangpura|vastrapur|gandhinagar|gift city|makarba|sanand|iskcon|bopal|chandkheda|thaltej|sola|shela|science city)\b/i.test(text);
+
+  return hasAhm ? 'AHM' : 'RJK';
+}
+
+/**
+ * Intelligent Fallback Template Generator
+ * Used when OpenCode is not running or configuring.
+ * Note: Salary/CTC is NEVER included unless the post explicitly asks for it!
+ */
+function generateTemplateEmail(post, profile, targetCity = 'RJK') {
   const greeting = extractRecipientGreeting(post.author, post.content);
   const role = extractRoleFromPost(post.content);
   const skillsSnippet = matchRelevantSkills(post.content);
@@ -114,9 +136,10 @@ function generateTemplateEmail(post, profile) {
   const askedForCTC = /\b(current\s*ctc|expected\s*ctc|salary|package|compensation|budget)\b/i.test(postLower);
   const ctcSnippet = askedForCTC ? `Current CTC: ${profile.currentCTC || '25,000 / Month'}` : '';
 
-  // Only mention city if asked for location / onsite
-  const askedForLocation = /\b(location|city|onsite|office|relocat)\b/i.test(postLower);
-  const citySnippet = askedForLocation ? `Residential City: ${profile.residentialCity || 'Rajkot, Gujarat'}` : '';
+  // Location handling based on selected resume (Ahmedabad vs Rajkot)
+  const cityName = targetCity === 'AHM' ? 'Ahmedabad, Gujarat' : (profile.residentialCity || 'Rajkot, Gujarat');
+  const askedForLocation = /\b(location|city|onsite|office|relocat|ahmedabad|rajkot)\b/i.test(postLower);
+  const citySnippet = askedForLocation ? `Residential City: ${cityName}` : '';
 
   const metaLines = [citySnippet, ctcSnippet].filter(Boolean);
 
@@ -153,11 +176,12 @@ function generateTemplateEmail(post, profile) {
  * Gives OpenCode smart strategic guidance instead of rigid copy-pasting.
  * Lets the AI adapt intelligently to the LinkedIn post while maintaining Ravi's winning style.
  */
-async function queryOpenCode(post, profile) {
+async function queryOpenCode(post, profile, targetCity = 'RJK') {
   return new Promise((resolve, reject) => {
     const greeting = extractRecipientGreeting(post.author, post.content);
     const role = extractRoleFromPost(post.content);
     const author = post.author || 'the hiring manager';
+    const cityName = targetCity === 'AHM' ? 'Ahmedabad, Gujarat' : 'Rajkot, Gujarat';
     const sanitizedPost = (post.content || '').slice(0, 1000).replace(/\r?\n/g, ' ');
 
     const prompt = `You are an elite tech cold-email writer drafting an email for software developer Ravi Gagiya.
@@ -168,7 +192,7 @@ CANDIDATE PROFILE:
 - Role: Full Stack Developer (2+ years production experience)
 - Skills: Node.js, Express.js, React.js, TypeScript, JavaScript, PostgreSQL, MongoDB, MySQL, REST APIs, Git
 - Real Work: Built production ERP platforms, real-time apps, third-party API integrations, and backend optimizations
-- Location: Rajkot, Gujarat (Only mention if the post asks for location or city)
+- Location: ${cityName} (Candidate is local to ${targetCity === 'AHM' ? 'Ahmedabad' : 'Rajkot'})
 - Resume: Attached as Ravi_Gagiya_Resume.pdf
 - Contact: +91 7096206404
 
@@ -181,8 +205,9 @@ CRITICAL INSTRUCTIONS:
 1. SMART & CONCISE: Write a short, sweet, punchy cold email (under 65 words). Don't sound like a generic template bot. Sound like an energetic, skilled developer speaking directly to the hiring team.
 2. RELEVANCE: Read what the post is looking for (tech stack, role, problems). Highlight 1-2 exact matching technical capabilities from Ravi's background that solve what they need.
 3. NEGOTIATION RULE (SALARY / CTC): NEVER mention salary or current CTC unless the post explicitly demands it (e.g. "mention CTC"). If not asked, DO NOT mention salary at all. Keep it private for later negotiation.
-4. CALL TO ACTION: Mention that Ravi's resume is attached for review and invite a quick introductory conversation.
-5. SIGNATURE:
+4. LOCATION: If location matters in the post, mention residing in ${cityName}.
+5. CALL TO ACTION: Mention that Ravi's resume is attached for review and invite a quick introductory conversation.
+6. SIGNATURE:
 Best regards,
 Ravi Gagiya
 +91 7096206404
@@ -255,24 +280,38 @@ Respond STRICTLY with valid JSON:
 
 /**
  * Main AI Generation Entry Point
- * 1. Attempts OpenCode AI first (using smart prompt guidance)
- * 2. Falls back to smart template if OpenCode is offline/not logged in
+ * 1. Determines target city (Ahmedabad vs Rajkot) & correct resume file
+ * 2. Attempts OpenCode AI first (using smart prompt guidance)
+ * 3. Falls back to smart template if OpenCode is offline/not logged in
  */
-async function generateColdEmail(post) {
+async function generateColdEmail(post, requestedCity) {
   const profile = getProfile();
+  const targetCity = detectTargetCity(post, requestedCity);
+  const resumeFile = targetCity === 'AHM' ? 'assets/Ravi_Gagiya_2026A.pdf' : 'assets/Ravi_Gagiya_Resume.pdf';
+
+  console.log(`[AI Service] Selected target city: ${targetCity} (Resume: ${resumeFile})`);
 
   // 1. Try OpenCode AI
   try {
     console.log('[AI Service] Asking OpenCode AI to craft smart personalized email...');
-    const aiResult = await queryOpenCode(post, profile);
+    const aiResult = await queryOpenCode(post, profile, targetCity);
     console.log(`[AI Service] Successfully generated smart email via OpenCode AI!`);
-    return aiResult;
+    return {
+      ...aiResult,
+      selectedCity: targetCity,
+      resumeFile
+    };
   } catch (err) {
     console.log(`[AI Service] OpenCode AI unavailable (${err.message}) -> using Smart Template`);
   }
 
   // 2. Smart Fallback Template (NO salary unless requested in post)
-  return generateTemplateEmail(post, profile);
+  const templateResult = generateTemplateEmail(post, profile, targetCity);
+  return {
+    ...templateResult,
+    selectedCity: targetCity,
+    resumeFile
+  };
 }
 
 module.exports = {

@@ -180,6 +180,13 @@ function setConnectionStatus(type, text) {
   connectionStatus.querySelector('.status-text').textContent = text;
 }
 
+// Helper: Detect city from post content
+function detectPostCity(content) {
+  const text = (content || '').toLowerCase();
+  const hasAhm = /\b(ahmedabad|amdavad|ahd|sg highway|s\.g\. highway|prahladnagar|prahlad nagar|bodakdev|satellite|navrangpura|vastrapur|gandhinagar|gift city|makarba|sanand|iskcon|bopal|chandkheda|thaltej|sola|shela|science city)\b/i.test(text);
+  return hasAhm ? 'AHM' : 'RJK';
+}
+
 // --- Render Visible Posts ---
 function renderVisiblePosts() {
   visiblePostsList.innerHTML = '';
@@ -187,6 +194,7 @@ function renderVisiblePosts() {
   visiblePosts.forEach((post, index) => {
     const isAlreadySaved = savedPosts.some(s => s.id === post.id);
     const isDrafted = draftedPostIds.has(post.id);
+    let selectedCity = detectPostCity(post.content);
 
     const card = document.createElement('div');
     card.className = 'post-card';
@@ -203,6 +211,9 @@ function renderVisiblePosts() {
           ${post.email ? `<div class="author-subrow"><span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span></div>` : ''}
         </div>
         <div class="card-actions-right">
+          <button class="btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}" title="Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.">
+            ${selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK'}
+          </button>
           <button class="btn-draft-email ${isDrafted ? 'drafted' : ''}" data-id="${post.id}" title="${isDrafted ? 'Email already saved to Gmail Drafts' : 'Generate AI cold email and save to Gmail Drafts'}">
             ${isDrafted ? '✓ In Drafts' : '✨ Draft'}
           </button>
@@ -221,6 +232,17 @@ function renderVisiblePosts() {
       </div>
     `;
 
+    // Location Pill Toggle
+    const locBtn = card.querySelector('.btn-location-pill');
+    locBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectedCity = selectedCity === 'AHM' ? 'RJK' : 'AHM';
+      locBtn.className = `btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}`;
+      locBtn.textContent = selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK';
+      locBtn.title = `Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.`;
+      showToast(`Resume switched to ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}`);
+    });
+
     // Button Save Listener
     const saveBtn = card.querySelector('.btn-save-post');
     saveBtn.addEventListener('click', async () => {
@@ -235,7 +257,7 @@ function renderVisiblePosts() {
     // Button Draft Listener
     const draftBtn = card.querySelector('.btn-draft-email');
     draftBtn.addEventListener('click', () => {
-      handleDraftEmail(post, draftBtn);
+      handleDraftEmail(post, draftBtn, selectedCity);
     });
 
     visiblePostsList.appendChild(card);
@@ -279,7 +301,7 @@ async function loadSettings() {
 }
 
 // --- AI Cold Email Drafting Handler ---
-async function handleDraftEmail(post, btn) {
+async function handleDraftEmail(post, btn, city = 'auto') {
   if (btn.classList.contains('loading')) return;
 
   if (draftedPostIds.has(post.id)) {
@@ -301,7 +323,8 @@ async function handleDraftEmail(post, btn) {
         chrome.runtime.sendMessage({
           action: 'createDraftOnServer',
           serverUrl: targetServerUrl,
-          post: post
+          post: post,
+          city: city
         }, (response) => {
           if (chrome.runtime.lastError) {
             console.warn('[PostGrab Popup] Runtime message error:', chrome.runtime.lastError.message);
@@ -315,7 +338,7 @@ async function handleDraftEmail(post, btn) {
         fetch(`${targetServerUrl.replace(/\/+$/, '')}/api/create-draft`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ post })
+          body: JSON.stringify({ post, city })
         })
           .then(r => r.json().then(data => resolve({ success: r.ok && data.success, data, error: data.error })))
           .catch(e => resolve({ success: false, error: e.message }));
@@ -335,7 +358,8 @@ async function handleDraftEmail(post, btn) {
       btn.textContent = '✓ In Drafts';
       const isAi = data.generator && (data.generator.includes('ai') || data.generator.includes('opencode'));
       const generatorLabel = isAi ? '🤖 AI Draft (OpenCode)' : '📋 Template Draft';
-      showToast(`${generatorLabel} saved to Gmail!`);
+      const cityLabel = data.selectedCity === 'AHM' ? 'Ahmedabad' : 'Rajkot';
+      showToast(`${generatorLabel} [${cityLabel} Resume] saved to Gmail!`);
     } else {
       throw new Error((result && result.error) || 'Draft creation failed on server');
     }
@@ -436,6 +460,7 @@ function renderSavedPosts() {
 
   filtered.forEach(post => {
     const isDrafted = draftedPostIds.has(post.id);
+    let selectedCity = detectPostCity(post.content);
     const card = document.createElement('div');
     card.className = 'post-card';
 
@@ -455,11 +480,14 @@ function renderSavedPosts() {
           ${post.email ? `<div class="author-subrow"><span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span></div>` : ''}
         </div>
         <div class="card-actions-right">
+          <button class="btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}" title="Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.">
+            ${selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK'}
+          </button>
           <button class="btn-draft-email ${isDrafted ? 'drafted' : ''}" data-id="${post.id}" title="${isDrafted ? 'Email already saved to Gmail Drafts' : 'Generate AI cold email and save to Gmail Drafts'}">
             ${isDrafted ? '✓ In Drafts' : '✨ Draft'}
           </button>
           <button class="icon-btn btn-copy" title="Copy text content">
-            📋 Copy
+            📋
           </button>
           <button class="icon-btn danger btn-delete" title="Delete post">
             🗑️
@@ -476,10 +504,21 @@ function renderSavedPosts() {
       </div>
     `;
 
+    // Location Pill Toggle
+    const locBtn = card.querySelector('.btn-location-pill');
+    locBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectedCity = selectedCity === 'AHM' ? 'RJK' : 'AHM';
+      locBtn.className = `btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}`;
+      locBtn.textContent = selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK';
+      locBtn.title = `Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.`;
+      showToast(`Resume switched to ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}`);
+    });
+
     // Button Draft Listener
     const draftBtn = card.querySelector('.btn-draft-email');
     draftBtn.addEventListener('click', () => {
-      handleDraftEmail(post, draftBtn);
+      handleDraftEmail(post, draftBtn, selectedCity);
     });
 
     // Copy Content Button

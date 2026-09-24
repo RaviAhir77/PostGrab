@@ -488,6 +488,46 @@
       flex-shrink: 0;
     }
 
+    .btn-location-pill {
+      background: rgba(6, 182, 212, 0.12);
+      color: #22d3ee;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      border-radius: var(--radius-sm);
+      padding: 3px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+      white-space: nowrap;
+      user-select: none;
+      line-height: 1.2;
+    }
+
+    .btn-location-pill:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.2);
+    }
+
+    .btn-location-pill:active {
+      transform: scale(0.95);
+    }
+
+    .btn-location-pill.city-rjk {
+      background: rgba(245, 158, 11, 0.12);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .btn-location-pill.city-ahm {
+      background: rgba(6, 182, 212, 0.15);
+      color: #22d3ee;
+      border-color: rgba(6, 182, 212, 0.35);
+    }
+
     .btn-save-post {
       background: linear-gradient(135deg, #0284c7, #06b6d4);
       color: #fff;
@@ -1175,6 +1215,13 @@
     });
   };
 
+  // Helper: Detect city from post content
+  const detectPostCity = (content) => {
+    const text = (content || '').toLowerCase();
+    const hasAhm = /\b(ahmedabad|amdavad|ahd|sg highway|s\.g\. highway|prahladnagar|prahlad nagar|bodakdev|satellite|navrangpura|vastrapur|gandhinagar|gift city|makarba|sanand|iskcon|bopal|chandkheda|thaltej|sola|shela|science city)\b/i.test(text);
+    return hasAhm ? 'AHM' : 'RJK';
+  };
+
   // 9. Render Visible Posts
   const renderVisiblePosts = () => {
     if (!visiblePostsList) return;
@@ -1183,6 +1230,7 @@
     visiblePosts.forEach((post) => {
       const isAlreadySaved = savedPosts.some((s) => s.id === post.id);
       const isDrafted = draftedPostIds.has(post.id);
+      let selectedCity = detectPostCity(post.content);
 
       const card = document.createElement('div');
       card.className = 'post-card';
@@ -1199,6 +1247,9 @@
             ${post.email ? `<div class="author-subrow"><span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span></div>` : ''}
           </div>
           <div class="card-actions-right">
+            <button class="btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}" title="Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.">
+              ${selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK'}
+            </button>
             <button class="btn-draft-email ${isDrafted ? 'drafted' : ''}" data-id="${post.id}" title="${isDrafted ? 'Email already saved to Gmail Drafts' : 'Generate AI cold email and save to Gmail Drafts'}">
               ${isDrafted ? '✓ In Drafts' : '✨ Draft'}
             </button>
@@ -1215,6 +1266,17 @@
         </div>
       `;
 
+      // Location Pill Toggle
+      const locBtn = card.querySelector('.btn-location-pill');
+      locBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedCity = selectedCity === 'AHM' ? 'RJK' : 'AHM';
+        locBtn.className = `btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}`;
+        locBtn.textContent = selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK';
+        locBtn.title = `Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.`;
+        showToast(`Resume switched to ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}`);
+      });
+
       // Save Button
       const saveBtn = card.querySelector('.btn-save-post');
       saveBtn.addEventListener('click', async () => {
@@ -1229,7 +1291,7 @@
       // Draft Button
       const draftBtn = card.querySelector('.btn-draft-email');
       draftBtn.addEventListener('click', () => {
-        handleDraftEmail(post, draftBtn);
+        handleDraftEmail(post, draftBtn, selectedCity);
       });
 
       visiblePostsList.appendChild(card);
@@ -1237,7 +1299,7 @@
   };
 
   // 10. AI Cold Email Drafting (Proxied via Background Worker to Bypass Mixed Content)
-  const handleDraftEmail = async (post, btn) => {
+  const handleDraftEmail = async (post, btn, city = 'auto') => {
     if (btn.classList.contains('loading')) return;
 
     if (draftedPostIds.has(post.id)) {
@@ -1259,7 +1321,8 @@
           {
             action: 'createDraftOnServer',
             serverUrl: targetServerUrl,
-            post: post
+            post: post,
+            city: city
           },
           (res) => {
             if (chrome.runtime?.lastError) {
@@ -1284,7 +1347,8 @@
         btn.textContent = '✓ In Drafts';
         const isAi = data.generator && (data.generator.includes('ai') || data.generator.includes('opencode'));
         const generatorLabel = isAi ? '🤖 AI Draft (OpenCode)' : '📋 Template Draft';
-        showToast(`${generatorLabel} saved to Gmail!`);
+        const cityLabel = data.selectedCity === 'AHM' ? 'Ahmedabad' : 'Rajkot';
+        showToast(`${generatorLabel} [${cityLabel} Resume] saved to Gmail!`);
       } else {
         throw new Error((result && result.error) || 'Server returned an error');
       }
@@ -1405,6 +1469,7 @@
 
     filtered.forEach((post) => {
       const isDrafted = draftedPostIds.has(post.id);
+      let selectedCity = detectPostCity(post.content);
       const card = document.createElement('div');
       card.className = 'post-card';
 
@@ -1424,10 +1489,13 @@
             ${post.email ? `<div class="author-subrow"><span class="badge-email" title="${escapeHtml(post.email)}">✉️ ${escapeHtml(post.email)}</span></div>` : ''}
           </div>
           <div class="card-actions-right">
+            <button class="btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}" title="Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.">
+              ${selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK'}
+            </button>
             <button class="btn-draft-email ${isDrafted ? 'drafted' : ''}" data-id="${post.id}" title="${isDrafted ? 'Email already saved to Gmail Drafts' : 'Generate AI cold email and save to Gmail Drafts'}">
               ${isDrafted ? '✓ In Drafts' : '✨ Draft'}
             </button>
-            <button class="icon-btn btn-copy" title="Copy text content">📋 Copy</button>
+            <button class="icon-btn btn-copy" title="Copy text content">📋</button>
             <button class="icon-btn danger btn-delete" title="Delete post">🗑️</button>
           </div>
         </div>
@@ -1439,9 +1507,20 @@
         </div>
       `;
 
+      // Location Pill Toggle
+      const locBtn = card.querySelector('.btn-location-pill');
+      locBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedCity = selectedCity === 'AHM' ? 'RJK' : 'AHM';
+        locBtn.className = `btn-location-pill ${selectedCity === 'AHM' ? 'city-ahm' : 'city-rjk'}`;
+        locBtn.textContent = selectedCity === 'AHM' ? '📍 AHM' : '📍 RJK';
+        locBtn.title = `Resume: ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}. Click to toggle.`;
+        showToast(`Resume switched to ${selectedCity === 'AHM' ? 'Ahmedabad (2026A)' : 'Rajkot'}`);
+      });
+
       // Draft
       const draftBtn = card.querySelector('.btn-draft-email');
-      draftBtn.addEventListener('click', () => handleDraftEmail(post, draftBtn));
+      draftBtn.addEventListener('click', () => handleDraftEmail(post, draftBtn, selectedCity));
 
       // Copy
       const copyBtn = card.querySelector('.btn-copy');
