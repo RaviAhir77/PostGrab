@@ -120,9 +120,37 @@ function detectTargetCity(post, requestedCity) {
 }
 
 /**
+ * Clean up cold email body: guarantees no salary/CTC or city/location leaks unless specifically asked in the post
+ */
+function sanitizeColdEmailBody(body, postContent) {
+  const postLower = (postContent || '').toLowerCase();
+  const askedForCTC = /\b(current\s*ctc|expected\s*ctc|share\s*ctc|mention\s*ctc|your\s*ctc|salary\s*expectation|what\s+is\s+your\s+ctc)\b/i.test(postLower);
+  const askedForLocation = /\b(current\s*location|present\s*location|share\s*location|mention\s*location|your\s*location|current\s*city|share\s*city|mention\s*city|where\s+are\s+you\s+located)\b/i.test(postLower);
+
+  let cleaned = body;
+
+  if (!askedForCTC) {
+    // Strip lines like "Current CTC: 25,000 / Month", "CTC: ...", "Salary: ..."
+    cleaned = cleaned.replace(/^[ \t]*(?:current\s*ctc|expected\s*ctc|ctc|salary|current\s*salary)\s*:[^\n]*\r?\n?/gim, '');
+  }
+
+  if (!askedForLocation) {
+    // Strip lines like "Residential City: Ahmedabad, Gujarat", "Location: ...", "City: ..."
+    cleaned = cleaned.replace(/^[ \t]*(?:residential\s*city|current\s*location|current\s*city|location|city)\s*:[^\n]*\r?\n?/gim, '');
+    // Strip standalone location sentences if generated
+    cleaned = cleaned.replace(/^[ \t]*(?:I\s+am\s+(?:currently\s+)?(?:residing|based|located)\s+in\s+[^.\n]+\.?)[ \t]*\r?\n?/gim, '');
+  }
+
+  // Clean up excessive blank lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  return cleaned;
+}
+
+/**
  * Intelligent Fallback Template Generator
  * Used when OpenCode is not running or configuring.
- * Note: Salary/CTC is NEVER included unless the post explicitly asks for it!
+ * Note: Salary/CTC and Residential City are strictly omitted unless the post explicitly demands them!
  */
 function generateTemplateEmail(post, profile, targetCity = 'RJK') {
   const greeting = extractRecipientGreeting(post.author, post.content);
@@ -131,14 +159,14 @@ function generateTemplateEmail(post, profile, targetCity = 'RJK') {
 
   const subject = `Application for ${role} - ${profile.fullName}`;
 
-  // Smart negotiation rule: ONLY show CTC if the post explicitly asked for it!
+  // Smart negotiation rule: ONLY show CTC if explicitly asked in the post!
   const postLower = (post.content || '').toLowerCase();
-  const askedForCTC = /\b(current\s*ctc|expected\s*ctc|salary|package|compensation|budget)\b/i.test(postLower);
+  const askedForCTC = /\b(current\s*ctc|expected\s*ctc|share\s*ctc|mention\s*ctc|your\s*ctc|salary\s*expectation|what\s+is\s+your\s+ctc)\b/i.test(postLower);
   const ctcSnippet = askedForCTC ? `Current CTC: ${profile.currentCTC || '25,000 / Month'}` : '';
 
-  // Location handling based on selected resume (Ahmedabad vs Rajkot)
+  // Smart location rule: ONLY show city if the recruiter explicitly asked candidate to state/share their location!
+  const askedForLocation = /\b(current\s*location|present\s*location|share\s*location|mention\s*location|your\s*location|current\s*city|share\s*city|mention\s*city|where\s+are\s+you\s+located)\b/i.test(postLower);
   const cityName = targetCity === 'AHM' ? 'Ahmedabad, Gujarat' : (profile.residentialCity || 'Rajkot, Gujarat');
-  const askedForLocation = /\b(location|city|onsite|office|relocat|ahmedabad|rajkot)\b/i.test(postLower);
   const citySnippet = askedForLocation ? `Residential City: ${cityName}` : '';
 
   const metaLines = [citySnippet, ctcSnippet].filter(Boolean);
@@ -181,7 +209,6 @@ async function queryOpenCode(post, profile, targetCity = 'RJK') {
     const greeting = extractRecipientGreeting(post.author, post.content);
     const role = extractRoleFromPost(post.content);
     const author = post.author || 'the hiring manager';
-    const cityName = targetCity === 'AHM' ? 'Ahmedabad, Gujarat' : 'Rajkot, Gujarat';
     const sanitizedPost = (post.content || '').slice(0, 1000).replace(/\r?\n/g, ' ');
 
     const prompt = `You are an elite tech cold-email writer drafting an email for software developer Ravi Gagiya.
@@ -192,8 +219,7 @@ CANDIDATE PROFILE:
 - Role: Full Stack Developer (2+ years production experience)
 - Skills: Node.js, Express.js, React.js, TypeScript, JavaScript, PostgreSQL, MongoDB, MySQL, REST APIs, Git
 - Real Work: Built production ERP platforms, real-time apps, third-party API integrations, and backend optimizations
-- Location: ${cityName} (Candidate is local to ${targetCity === 'AHM' ? 'Ahmedabad' : 'Rajkot'})
-- Resume: Attached as Ravi_Gagiya_Resume.pdf
+- Resume: Attached as Ravi_Gagiya_Resume.pdf (all candidate address, location, and contact details are already inside the resume)
 - Contact: +91 7096206404
 
 POST CONTEXT:
@@ -202,12 +228,13 @@ POST CONTEXT:
 - Post Text: "${sanitizedPost}"
 
 CRITICAL INSTRUCTIONS:
-1. SMART & CONCISE: Write a short, sweet, punchy cold email (under 65 words). Don't sound like a generic template bot. Sound like an energetic, skilled developer speaking directly to the hiring team.
-2. RELEVANCE: Read what the post is looking for (tech stack, role, problems). Highlight 1-2 exact matching technical capabilities from Ravi's background that solve what they need.
-3. NEGOTIATION RULE (SALARY / CTC): NEVER mention salary or current CTC unless the post explicitly demands it (e.g. "mention CTC"). If not asked, DO NOT mention salary at all. Keep it private for later negotiation.
-4. LOCATION: If location matters in the post, mention residing in ${cityName}.
-5. CALL TO ACTION: Mention that Ravi's resume is attached for review and invite a quick introductory conversation.
-6. SIGNATURE:
+1. SHORT & PUNCHY: Keep email under 50-60 words. Sound like a skilled, natural developer speaking directly to the team (no generic bot fluff).
+2. TECHNICAL MATCH: Highlight 1-2 exact matching technical skills or experience matching what the post asks for (e.g. Node.js, React, APIs, ERP).
+3. STRICT PRIVACY (NO LOCATION / NO SALARY BY DEFAULT):
+   - DO NOT mention residential city or location in the email body. The attached resume already contains all location details. Only mention location if the post SPECIFICALLY asks candidate to state their current location (e.g. "mention current location").
+   - DO NOT mention salary or current CTC. Only mention CTC if the post SPECIFICALLY demands it (e.g. "mention current CTC").
+4. CALL TO ACTION: Mention that Ravi's resume is attached for review and invite a quick introductory conversation.
+5. SIGNATURE:
 Best regards,
 Ravi Gagiya
 +91 7096206404
@@ -298,6 +325,7 @@ async function generateColdEmail(post, requestedCity) {
     console.log(`[AI Service] Successfully generated smart email via OpenCode AI!`);
     return {
       ...aiResult,
+      body: sanitizeColdEmailBody(aiResult.body, post.content),
       selectedCity: targetCity,
       resumeFile
     };
@@ -305,10 +333,11 @@ async function generateColdEmail(post, requestedCity) {
     console.log(`[AI Service] OpenCode AI unavailable (${err.message}) -> using Smart Template`);
   }
 
-  // 2. Smart Fallback Template (NO salary unless requested in post)
+  // 2. Smart Fallback Template (NO salary or city unless requested in post)
   const templateResult = generateTemplateEmail(post, profile, targetCity);
   return {
     ...templateResult,
+    body: sanitizeColdEmailBody(templateResult.body, post.content),
     selectedCity: targetCity,
     resumeFile
   };
